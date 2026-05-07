@@ -43,7 +43,7 @@ export type TherapistMatch = {
   userId: string;
   therapistId: string;
   therapist: Omit<TherapistDirectoryRecord, 'insurance' | 'isActive'>;
-  hard_constraints_pass: true;
+  hard_constraints_pass: boolean;
   hard_constraint_reasons: string[];
   preference_score: number;
   tmti_score: number;
@@ -134,6 +134,8 @@ function getMatchingInsurance(therapist: TherapistDirectoryRecord, preferences: 
   const provider = normalizeForCompare(preferences.insuranceProvider);
   const plan = normalizeForCompare(preferences.insurancePlan);
 
+  if (!provider) return [];
+
   return therapist.insurance.filter((insurance) => {
     if (!insurance.acceptingNewPatients) return false;
     if (normalizeForCompare(insurance.provider) !== provider) return false;
@@ -141,6 +143,23 @@ function getMatchingInsurance(therapist: TherapistDirectoryRecord, preferences: 
 
     return normalizeForCompare(insurance.plan) === plan;
   });
+}
+
+function scoreArea(therapist: TherapistDirectoryRecord, areaCode: string): number {
+  if (!areaCode) return 65;
+  if (therapist.areaCodesServed.includes(areaCode)) return 100;
+
+  const requestedPrefix = areaCode.slice(0, 3);
+  if (therapist.areaCodesServed.some((servedArea) => servedArea.slice(0, 3) === requestedPrefix)) return 75;
+
+  return 35;
+}
+
+function scoreInsurance(matchingInsurance: TherapistInsurance[], preferences: ResolvedMatchPreferences): number {
+  if (!preferences.insuranceProvider) return 60;
+  if (matchingInsurance.length > 0) return 100;
+
+  return 35;
 }
 
 function scoreLanguage(therapist: TherapistDirectoryRecord, preferredLanguage?: string): number {
@@ -208,14 +227,6 @@ export function resolveMatchPreferences(
     errors.push({ field: 'areaCode', message: 'areaCode must be a 5-digit U.S. ZIP code.' });
   }
 
-  if (preferences.therapyTypes.length === 0) {
-    errors.push({ field: 'therapyTypes', message: 'At least one therapy type is required.' });
-  }
-
-  if (!preferences.insuranceProvider) {
-    errors.push({ field: 'insuranceProvider', message: 'insuranceProvider is required.' });
-  }
-
   return { preferences, errors };
 }
 
@@ -229,43 +240,53 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
       const matchingInsurance = getMatchingInsurance(therapist, preferences);
       const areaMatch = therapist.areaCodesServed.includes(preferences.areaCode);
       const passesHardConstraints = areaMatch && matchedTherapyTypes.length > 0 && matchingInsurance.length > 0;
-
-      return { therapist, matchedTherapyTypes, matchingInsurance, passesHardConstraints };
-    })
-    .filter(({ passesHardConstraints }) => passesHardConstraints)
-    .map(({ therapist, matchedTherapyTypes, matchingInsurance }) => {
-      const expertiseScore = clampScore((matchedTherapyTypes.length / preferences.therapyTypes.length) * 100);
+      const expertiseScore = preferences.therapyTypes.length === 0 ? 65 : clampScore((matchedTherapyTypes.length / preferences.therapyTypes.length) * 100);
       const languageScore = scoreLanguage(therapist, preferences.preferredLanguage);
       const formatScore = scoreSessionFormat(therapist, preferences.carePreference);
-      const preferenceScore = clampScore(expertiseScore * 0.5 + languageScore * 0.3 + formatScore * 0.2);
+      const areaScore = scoreArea(therapist, preferences.areaCode);
+      const insuranceScore = scoreInsurance(matchingInsurance, preferences);
+      const preferenceScore = clampScore(expertiseScore * 0.42 + languageScore * 0.2 + formatScore * 0.16 + areaScore * 0.12 + insuranceScore * 0.1);
       const tmtiScore = scoreStyleSignal(therapist.id, preferences.cnipPreferenceProfile);
       const finalScore = clampScore(preferenceScore * 0.7 + tmtiScore * 0.3);
       const insuranceLabel = preferences.insurancePlan
         ? `${preferences.insuranceProvider} ${preferences.insurancePlan}`
         : preferences.insuranceProvider;
+      const topTherapyTypes = matchedTherapyTypes.length > 0 ? matchedTherapyTypes : therapist.therapyTypes.slice(0, 3);
+      const reasons = [
+        areaMatch ? `Serves ZIP code ${preferences.areaCode}.` : `Closest available ZIP coverage: ${therapist.areaCodesServed.slice(0, 3).join(', ')}.`,
+        matchedTherapyTypes.length > 0
+          ? `Supports ${matchedTherapyTypes.slice(0, 3).join(', ')}.`
+          : preferences.therapyTypes.length === 0
+            ? `Broad profile focus: ${therapist.therapyTypes.slice(0, 3).join(', ')}.`
+            : `Related profile focus: ${therapist.therapyTypes.slice(0, 3).join(', ')}.`,
+        matchingInsurance.length > 0
+          ? `Accepts ${insuranceLabel}.`
+          : preferences.insuranceProvider
+            ? `Insurance with ${insuranceLabel} needs confirmation.`
+            : 'Insurance not provided; confirm coverage with therapist.',
+      ];
 
       return {
         id: createMatchId(preferences.userId, therapist.id),
         userId: preferences.userId,
         therapistId: therapist.id,
         therapist: publicTherapist(therapist),
-        hard_constraints_pass: true as const,
-        hard_constraint_reasons: [
-          `Serves ZIP code ${preferences.areaCode}.`,
-          `Supports ${matchedTherapyTypes.slice(0, 3).join(', ')}.`,
-          `Accepts ${insuranceLabel}.`,
-        ],
+        hard_constraints_pass: passesHardConstraints,
+        hard_constraint_reasons: reasons,
         preference_score: preferenceScore,
         tmti_score: tmtiScore,
         final_score: finalScore,
         explanation: {
           tokens: [
+            passesHardConstraints ? 'Exact match on ZIP, focus, and insurance.' : 'Best available partial match; confirm details before booking.',
             `Matched ${matchedTherapyTypes.length} therapy focus${matchedTherapyTypes.length === 1 ? '' : 'es'}.`,
             `Language fit: ${languageScore}.`,
             `Session format fit: ${formatScore}.`,
+            `Location fit: ${areaScore}.`,
+            `Insurance fit: ${insuranceScore}.`,
             `TMTI placeholder score: ${tmtiScore}.`,
           ],
-          matchedTherapyTypes,
+          matchedTherapyTypes: topTherapyTypes,
           matchingInsurance,
           scoreBreakdown: {
             expertise: expertiseScore,

@@ -114,14 +114,6 @@ function validatePreferencePayload(body: Record<string, unknown>) {
     errors.push(validationError('areaCode', 'areaCode must be a 5-digit U.S. ZIP code.'));
   }
 
-  if (therapyTypes.map(String).filter((value) => value.trim()).length === 0) {
-    errors.push(validationError('therapyTypes', 'At least one therapy type or life aspect is required.'));
-  }
-
-  if (typeof body.insuranceProvider !== 'string' || body.insuranceProvider.trim().length === 0) {
-    errors.push(validationError('insuranceProvider', 'insuranceProvider is required.'));
-  }
-
   return errors;
 }
 
@@ -548,7 +540,7 @@ export function createDevApiMiddleware() {
           sendJson(response, 400, {
             error: {
               code: 'INVALID_MATCH_GENERATION_PAYLOAD',
-              message: 'POST /matches/generate requires areaCode, therapyTypes, and insuranceProvider, or a userId with saved preferences.',
+              message: 'POST /matches/generate requires areaCode, or a userId with saved preferences.',
               details: errors,
             },
           });
