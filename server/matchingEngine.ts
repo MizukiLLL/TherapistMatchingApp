@@ -199,6 +199,21 @@ function createMatchId(userId: string, therapistId: string): string {
   return `match-${userId}-${therapistId}-${Date.now()}`;
 }
 
+function getSourceToken(therapist: TherapistDirectoryRecord): string | null {
+  const source = (therapist as TherapistDirectoryRecord & { source?: string; sourceProfileUrl?: string }).source;
+  const sourceProfileUrl = (therapist as TherapistDirectoryRecord & { sourceProfileUrl?: string }).sourceProfileUrl;
+
+  if (source === 'psychologytoday' && sourceProfileUrl) {
+    return `Source: fetched PsychologyToday profile (${sourceProfileUrl}).`;
+  }
+
+  if (source === 'psychologytoday') {
+    return 'Source: fetched PsychologyToday profile.';
+  }
+
+  return null;
+}
+
 export function resolveMatchPreferences(
   request: MatchGenerationRequest,
   savedPreferences?: UserPreferenceRecord
@@ -265,6 +280,7 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
             ? `Insurance with ${insuranceLabel} needs confirmation.`
             : 'Insurance not provided; confirm coverage with therapist.',
       ];
+      const sourceToken = getSourceToken(therapist);
 
       return {
         id: createMatchId(preferences.userId, therapist.id),
@@ -278,6 +294,7 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
         final_score: finalScore,
         explanation: {
           tokens: [
+            ...(sourceToken ? [sourceToken] : []),
             passesHardConstraints ? 'Exact match on ZIP, focus, and insurance.' : 'Best available partial match; confirm details before booking.',
             `Matched ${matchedTherapyTypes.length} therapy focus${matchedTherapyTypes.length === 1 ? '' : 'es'}.`,
             `Language fit: ${languageScore}.`,

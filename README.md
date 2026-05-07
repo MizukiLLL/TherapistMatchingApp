@@ -93,3 +93,30 @@ Turn a scraper-ready PsychologyToday profile into an immediate live result with:
 ```
 
 The response includes `liveResult`, and subsequent `/therapists` searches and `/matches/generate` calls use the ingested profile immediately.
+
+Fetch a PsychologyToday profile URL directly, extract the page facts, persist the therapist, and reflect the fetched therapist against matching preferences with:
+
+`POST /therapists/psychologytoday/fetch`
+
+```json
+{
+  "profileUrl": "https://www.psychologytoday.com/us/therapists/jane-li-new-york-ny",
+  "searchFilters": {
+    "areaCode": "10001",
+    "therapyType": "Anxiety",
+    "insuranceProvider": "Aetna",
+    "insurancePlan": "PPO"
+  },
+  "matchPreferences": {
+    "userId": "demo-user",
+    "areaCode": "10001",
+    "therapyTypes": ["Anxiety"],
+    "insuranceProvider": "Aetna",
+    "insurancePlan": "PPO",
+    "preferredLanguage": "Mandarin",
+    "carePreference": "Virtual"
+  }
+}
+```
+
+If the fetched page omits structured ZIP, specialty, or insurance details, include `profileOverrides` with those fields; the response returns `scraped`, `liveResult`, and `matchReflection`.

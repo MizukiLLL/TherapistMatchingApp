@@ -8,6 +8,8 @@ export type PsychologyTodayTherapistProfile = {
   licenseStates?: string[];
   areaCodes: string[];
   profileUrl: string;
+  source?: string;
+  sourceProfileUrl?: string;
   sessionFormats: Array<'Virtual' | 'InPerson'>;
   languages?: string[];
   insuranceProviders: string[];

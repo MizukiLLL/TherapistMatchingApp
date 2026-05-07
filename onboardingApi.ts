@@ -126,6 +126,8 @@ type MatchGenerationResponse = {
       hourlyRateMin: number | null;
       hourlyRateMax: number | null;
       profileUrl: string;
+      source?: string;
+      sourceProfileUrl?: string;
     };
     hard_constraint_reasons: string[];
     preference_score: number;
@@ -163,6 +165,7 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       insurancePlan: data.insurancePlan,
       carePreference: data.carePreference,
       cnipPreferenceProfile: data.cnipPreferenceProfile,
+      fetchPsychologyToday: true,
     }),
   });
 
@@ -181,6 +184,8 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       licenseStates: match.therapist.licenseStates,
       areaCodes: match.therapist.areaCodesServed,
       profileUrl: match.therapist.profileUrl,
+      source: match.therapist.source,
+      sourceProfileUrl: match.therapist.sourceProfileUrl,
       sessionFormats: [
         ...(match.therapist.telehealthAvailable ? ['Virtual' as const] : []),
         ...(match.therapist.inPersonAvailable ? ['InPerson' as const] : []),

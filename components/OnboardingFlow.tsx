@@ -1,19 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, HeartHandshake, Loader2, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Loader2, Send, Sparkles } from 'lucide-react';
 import { generateTherapistMatches, loadOnboardingState, saveOnboardingState } from '../onboardingApi';
 import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
 import { buildCnipPreferenceProfile, cnipStyleNames } from '../utils/therapistRecommendations';
 import type { TherapistRecommendation } from '../utils/therapistRecommendations';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type IntroStage = 'cover' | 'lit' | 'chat';
 type Locale = 'zh-CN' | 'zh-HK' | 'en';
 type LifeAspectCategory = keyof OnboardingFormData['lifeAspectsByCategory'];
 type LocalizedLabel = Record<Locale, string>;
 type Option<T extends string = string> = { id: T; label: LocalizedLabel };
 type CnipStyleOption = {
   id: CnipConversationStyle;
-  name: string;
-  role: string;
+  therapistName: string;
+  styleLabel: string;
   sampleResponse: (concerns: string) => string;
   traits: string[];
 };
@@ -155,29 +156,29 @@ const expandedLifeAspectOptions: Record<LifeAspectCategory, Option[]> = {
 const cnipStyleOptions: CnipStyleOption[] = [
   {
     id: 'structuredGuide',
-    name: 'Structured guide',
-    role: 'Keeps the session organized',
+    therapistName: 'Ava',
+    styleLabel: 'Structured guide',
     sampleResponse: (concerns) => `We can start by mapping when ${concerns} shows up, choose one target for the first session, and leave with a clear next step.`,
     traits: ['directive', 'present-focused', 'clear plan'],
   },
   {
     id: 'reflectiveCompanion',
-    name: 'Reflective companion',
-    role: 'Moves at your pace',
+    therapistName: 'Nina',
+    styleLabel: 'Reflective companion',
     sampleResponse: (concerns) => `I would slow down with you around ${concerns}, reflect what feels most tender, and let the pace come from what feels safe to say.`,
     traits: ['client-led', 'warm support', 'steady pace'],
   },
   {
     id: 'deepExplorer',
-    name: 'Deep explorer',
-    role: 'Connects past and present',
+    therapistName: 'Leah',
+    styleLabel: 'Deep explorer',
     sampleResponse: (concerns) => `I would be curious about how ${concerns} connects to earlier patterns, important relationships, and emotions that may not have had enough room.`,
     traits: ['depth work', 'emotion-focused', 'past-oriented'],
   },
   {
     id: 'practicalCoach',
-    name: 'Practical coach',
-    role: 'Turns insight into action',
+    therapistName: 'Sofia',
+    styleLabel: 'Practical coach',
     sampleResponse: (concerns) => `For ${concerns}, I would help you test a small skill this week, notice what works, and adjust the plan together next time.`,
     traits: ['skills-based', 'focused challenge', 'home practice'],
   },
@@ -185,8 +186,8 @@ const cnipStyleOptions: CnipStyleOption[] = [
 
 const copyByLocale = {
   en: {
-    brand: 'Care match',
-    intro: 'Hi. I will ask a few quick questions so we can narrow this down together.',
+    brand: 'BetterMatch',
+    intro: "Hi, I am your little match. I am so proud of you that you're making the first step of getting help. Don't worry! It will be easy. I will ask a few quick questions, and we can narrow this down together.",
     loading: 'Loading your saved answers...',
     back: 'Back',
     continue: 'Continue',
@@ -240,7 +241,7 @@ const copyByLocale = {
     languageOptions: { English: 'English', Mandarin: '普通话', Cantonese: '廣東話' },
   },
   'zh-CN': {
-    brand: '咨询匹配',
+    brand: 'BetterMatch',
     intro: '你好。我会问几个简短的问题，帮你一步步缩小范围。',
     loading: '正在读取你之前的回答...',
     back: '返回',
@@ -290,7 +291,7 @@ const copyByLocale = {
     languageOptions: { English: 'English', Mandarin: '普通话', Cantonese: '廣東話' },
   },
   'zh-HK': {
-    brand: '治療師配對',
+    brand: 'BetterMatch',
     intro: '你好。我會問幾條簡短問題，幫你一步步收窄範圍。',
     loading: '正在讀取你之前嘅回答...',
     back: '返回',
@@ -389,13 +390,105 @@ const assistantBubbleClass =
   'relative rounded-[22px] rounded-tl-md border border-[#e3ddd1] bg-[#fffdf8] px-5 py-4 text-[15px] leading-7 text-[#40382f] shadow-[0_10px_24px_rgba(97,86,68,0.08)]';
 
 const assistantBubbleTailClass = 'absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l border-[#e3ddd1] bg-[#fffdf8]';
+const assistantName = 'Match';
+const splashHeadline = 'Get your first match!';
+
+function MatchAvatar({ className = 'h-8 w-8' }: { className?: string }) {
+  return (
+    <div
+      className={`flex items-center justify-center rounded-full border border-[#d8d0c2] bg-[#fffaf1] shadow-[0_8px_18px_rgba(97,86,68,0.12)] ${className}`}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 32 32" className="h-[78%] w-[78%]" fill="none">
+        <path d="M15.8 22.7V13.8" stroke="#7a5b39" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M13.8 24.2H18" stroke="#7a5b39" strokeWidth="1.8" strokeLinecap="round" />
+        <path
+          d="M16 8.1C17.1 5.8 19.7 5.6 20.8 7.5C21.6 8.9 21.2 10.5 20.1 11.6L16 15.6L11.9 11.6C10.8 10.5 10.4 8.9 11.2 7.5C12.3 5.6 14.9 5.8 16 8.1Z"
+          fill="#f58a4b"
+          stroke="#e06f32"
+          strokeWidth="1"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M16 10.1C16.6 8.9 17.8 8.9 18.4 9.8C18.8 10.5 18.6 11.4 18 12L16 13.9L14 12C13.4 11.4 13.2 10.5 13.6 9.8C14.2 8.9 15.4 8.9 16 10.1Z"
+          fill="#ffd26a"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function InitialsAvatar({ name, className = 'h-8 w-8' }: { name: string; className?: string }) {
+  const initials = name
+    .split(' ')
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div
+      className={`flex items-center justify-center rounded-full border border-[#d8d0c2] bg-[#f5efe3] text-xs font-semibold uppercase tracking-[0.08em] text-[#5f6658] shadow-[0_8px_18px_rgba(97,86,68,0.1)] ${className}`}
+      aria-hidden="true"
+    >
+      {initials}
+    </div>
+  );
+}
+
+function MatchboxScene({ lit }: { lit: boolean }) {
+  return (
+    <div className="relative mx-auto aspect-[4/5] w-full max-w-[360px]">
+      <div className="absolute inset-x-[6%] bottom-[8%] top-[10%] rounded-[40px] bg-[linear-gradient(180deg,rgba(255,252,245,0.98)_0%,rgba(245,238,225,0.92)_100%)] shadow-[0_38px_80px_rgba(73,47,25,0.18)]" />
+      <div className="absolute inset-x-[14%] bottom-[16%] h-[48%] rounded-[30px] bg-[linear-gradient(180deg,#7e4924_0%,#603418_100%)] shadow-[0_34px_72px_rgba(73,47,25,0.34)]">
+        <div className="absolute inset-0 rounded-[30px] border border-[#74441d]/65" />
+        <div
+          className={[
+            'absolute bottom-[10%] top-[10%] w-[72%] rounded-[22px] bg-[linear-gradient(180deg,#f5d8ae_0%,#eec48a_52%,#d99757_100%)] shadow-[inset_0_2px_0_rgba(255,248,235,0.75),inset_0_-8px_14px_rgba(127,80,33,0.18)] transition-all duration-700 ease-out',
+            lit ? 'left-[23%]' : 'left-[7%]',
+          ].join(' ')}
+        >
+          <div className="absolute inset-x-[12%] top-[16%] h-[17%] rounded-full bg-[#f8e4c5]/95 shadow-[0_3px_10px_rgba(114,74,38,0.16)]" />
+          <div className="absolute inset-y-[20%] right-[6%] w-[4%] rounded-full bg-[#643b1d]/35" />
+          <div className="absolute inset-x-[22%] bottom-[11%] h-[11%] rounded-full bg-[#693d1d]/18 blur-[2px]" />
+          <div className="absolute left-[18%] top-[34%] h-[10%] w-[64%] rounded-full bg-white/18 blur-sm" />
+        </div>
+        <div className="absolute -right-[1%] bottom-[14%] top-[18%] w-[6%] rounded-r-[18px] bg-[linear-gradient(180deg,#71421f_0%,#573116_100%)] opacity-95" />
+      </div>
+
+      <div
+        className={[
+          'absolute bottom-[29%] left-1/2 h-[45%] w-7 -translate-x-1/2 transition-all duration-700 ease-out',
+          lit ? '-translate-y-[48%] rotate-[7deg]' : 'translate-y-[11%] rotate-0',
+        ].join(' ')}
+      >
+        <div className="absolute bottom-0 left-1/2 h-[82%] w-[4px] -translate-x-1/2 rounded-full bg-[linear-gradient(180deg,#8b6841_0%,#6d4d30_100%)] shadow-[0_0_0_1px_rgba(255,248,236,0.18)]" />
+        <div className="absolute bottom-[76%] left-1/2 h-4 w-4 -translate-x-1/2 rounded-full bg-[#2e2016] shadow-[0_2px_6px_rgba(0,0,0,0.18)]" />
+        <div
+          className={[
+            'absolute bottom-[80%] left-1/2 -translate-x-1/2 transition-all duration-500',
+            lit ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+          ].join(' ')}
+        >
+          <div className="relative h-[74px] w-[74px]">
+            <div className="absolute inset-[16%] rotate-[8deg] rounded-[56%_44%_58%_42%/62%_42%_58%_38%] bg-[#f28b41] shadow-[0_0_52px_rgba(242,139,65,0.5)]" />
+            <div className="absolute inset-[33%] rounded-[52%_48%_60%_40%/62%_38%_58%_42%] bg-[#ffd978]" />
+          </div>
+        </div>
+      </div>
+      <div className="absolute left-[18%] right-[18%] bottom-[7%] h-10 rounded-full bg-[#6f4626]/14 blur-xl" />
+    </div>
+  );
+}
 
 export function OnboardingFlow() {
   const [step, setStep] = useState<Step>(0);
+  const [introStage, setIntroStage] = useState<IntroStage>('cover');
   const [formData, setFormData] = useState<OnboardingFormData>(EMPTY_FORM);
   const [status, setStatus] = useState<'idle' | 'loading' | 'saving' | 'saved' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [typedIntro, setTypedIntro] = useState('');
   const [typedQuestion, setTypedQuestion] = useState('');
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [recommendations, setRecommendations] = useState<TherapistRecommendation[]>([]);
@@ -458,6 +551,33 @@ export function OnboardingFlow() {
   }, []);
 
   useEffect(() => {
+    if (introStage !== 'chat') {
+      setTypedIntro('');
+      return;
+    }
+
+    const fullIntro = copy.intro;
+    setTypedIntro('');
+    let index = 0;
+    const timer = window.setInterval(() => {
+      index += 1;
+      setTypedIntro(fullIntro.slice(0, index));
+      if (index >= fullIntro.length) window.clearInterval(timer);
+    }, 16);
+    return () => window.clearInterval(timer);
+  }, [copy.intro, introStage]);
+
+  useEffect(() => {
+    if (introStage !== 'chat') {
+      setTypedQuestion('');
+      return;
+    }
+
+    if (typedIntro !== copy.intro) {
+      setTypedQuestion('');
+      return;
+    }
+
     const fullQuestion = questions[step];
     setTypedQuestion('');
     let index = 0;
@@ -467,7 +587,7 @@ export function OnboardingFlow() {
       if (index >= fullQuestion.length) window.clearInterval(timer);
     }, 18);
     return () => window.clearInterval(timer);
-  }, [questions, step]);
+  }, [copy.intro, introStage, questions, step, typedIntro]);
 
   const currentStepValid = useMemo(() => {
     if (step === 0) return true;
@@ -588,6 +708,12 @@ export function OnboardingFlow() {
       setStatus('error');
       setErrorMessage(copy.submitError);
     }
+  };
+
+  const handleIntroStart = () => {
+    if (introStage !== 'cover') return;
+    setIntroStage('lit');
+    window.setTimeout(() => setIntroStage('chat'), 1100);
   };
 
   const renderAnswerControls = () => {
@@ -729,10 +855,14 @@ export function OnboardingFlow() {
                         selected ? 'ring-2 ring-[#6e7b64]/35' : 'hover:border-[#d8d0c2]',
                       ].join(' ')}
                     >
-                      <div className="max-w-[88%]">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1 shrink-0">
+                          <InitialsAvatar name={style.therapistName} className="h-8 w-8" />
+                        </div>
+                        <div className="max-w-[88%]">
                         <div className="mb-1 flex items-center gap-2 px-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{style.name}</p>
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${theme.tag}`}>{style.role}</span>
+                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{style.therapistName}</p>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${theme.tag}`}>{style.styleLabel}</span>
                           {selected && <Check className="h-4 w-4 text-[#6e7b64]" />}
                         </div>
                         <div
@@ -744,6 +874,7 @@ export function OnboardingFlow() {
                           <span aria-hidden="true" className={`absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l ${theme.tail}`} />
                           <p>{style.sampleResponse(selectedConcernSample)}</p>
                         </div>
+                      </div>
                       </div>
                     </button>
                   );
@@ -860,7 +991,14 @@ export function OnboardingFlow() {
                           <h2 className="mt-1 text-2xl font-semibold text-[#332d28]">
                             {therapist.name}, {therapist.credentials}
                           </h2>
-                          <p className="mt-1 text-sm font-medium text-[#746c62]">{therapist.location}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-[#746c62]">{therapist.location}</p>
+                            {therapist.source === 'psychologytoday' && (
+                              <span className="rounded-full border border-[#c7d8bf] bg-[#eef6e8] px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#53614d]">
+                                PsychologyToday
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="rounded-full bg-[#6e7b64] px-4 py-2 text-sm font-semibold text-[#f9f5ec]">{recommendation.score}% match</div>
                       </div>
@@ -950,14 +1088,91 @@ export function OnboardingFlow() {
     );
   }
 
+  if (introStage !== 'chat') {
+    return (
+      <main className="min-h-screen overflow-hidden bg-[#110d0b] text-[#f7efe0]">
+        <div className="relative flex min-h-screen flex-col">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(39,28,20,0.65),transparent_42%),linear-gradient(180deg,#120e0c_0%,#0d0a09_100%)]" />
+          <div
+            className={[
+              'absolute inset-0 transition-opacity duration-700',
+              introStage === 'lit' ? 'opacity-100' : 'opacity-0',
+            ].join(' ')}
+            style={{
+              background:
+                'radial-gradient(circle at 62% 42%, rgba(255,190,112,0.32) 0%, rgba(255,164,74,0.18) 18%, rgba(30,18,12,0) 42%), radial-gradient(circle at 50% 68%, rgba(255,214,150,0.12) 0%, rgba(17,13,11,0) 34%)',
+            }}
+          />
+          <div className="relative flex flex-1 flex-col justify-between px-6 py-8 sm:px-10 sm:py-10">
+            <header className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <MatchAvatar className="h-10 w-10" />
+                <div>
+                  <p
+                    className={[
+                      'text-xs font-semibold uppercase tracking-[0.16em] transition-colors duration-500',
+                      introStage === 'lit' ? 'text-[#f6d9ac]' : 'text-[#8c7d6b]',
+                    ].join(' ')}
+                  >
+                    {copy.brand}
+                  </p>
+                </div>
+              </div>
+            </header>
+
+            <section className="flex flex-1 flex-col items-center justify-center">
+              <div className="w-full max-w-5xl">
+                <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,420px)_1fr]">
+                  <div className="max-w-md">
+                    <h1
+                      className={[
+                        'text-5xl font-semibold leading-[1.02] transition-colors duration-500 sm:text-6xl',
+                        introStage === 'lit' ? 'text-[#fff5e6]' : 'text-[#7d7064]',
+                      ].join(' ')}
+                    >
+                      {splashHeadline}
+                    </h1>
+                  </div>
+
+                  <div className="relative">
+                    <div
+                      className={[
+                        'absolute inset-x-[8%] top-[8%] h-44 rounded-full blur-3xl transition-all duration-700',
+                        introStage === 'lit' ? 'bg-[#ffbe71]/35 opacity-100' : 'bg-[#ffbe71]/0 opacity-0',
+                      ].join(' ')}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleIntroStart}
+                      className="group block w-full rounded-[40px] p-4 text-left transition focus:outline-none focus:ring-4 focus:ring-[#f0c589]/35"
+                    >
+                      <div
+                        className={[
+                          'rounded-[38px] border p-6 transition-all duration-700 sm:p-8',
+                          introStage === 'lit'
+                            ? 'border-[#6e5036] bg-[rgba(35,24,18,0.88)] shadow-[0_24px_70px_rgba(255,171,84,0.16)]'
+                            : 'border-[#2e2119] bg-[rgba(20,15,12,0.88)] shadow-[0_24px_60px_rgba(0,0,0,0.28)]',
+                        ].join(' ')}
+                      >
+                        <MatchboxScene lit={introStage === 'lit'} />
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#efe7d7] text-[#332d28]">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-6 sm:px-6">
         <header className="flex items-center justify-between py-2">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6e7b64] text-[#f9f5ec]">
-              <HeartHandshake className="h-4 w-4" />
-            </div>
+            <MatchAvatar className="h-9 w-9" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">{copy.brand}</p>
               <p className="text-sm text-[#746c62]">
@@ -980,12 +1195,14 @@ export function OnboardingFlow() {
             <>
               <div className="flex-1 space-y-5 overflow-y-auto pr-1">
                 <div className="flex items-start gap-3">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d6d4c8] text-xs font-semibold text-[#5f6658]">
-                    AI
+                  <div className="mt-1 shrink-0">
+                    <MatchAvatar />
                   </div>
                   <div className={`max-w-[88%] ${assistantBubbleClass}`}>
                     <span aria-hidden="true" className={assistantBubbleTailClass} />
-                    {copy.intro}
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{assistantName}</p>
+                    {typedIntro}
+                    {typedIntro !== copy.intro && <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse rounded-sm bg-[#6e7b64]" aria-hidden="true" />}
                   </div>
                 </div>
 
@@ -998,11 +1215,12 @@ export function OnboardingFlow() {
                     title="Return to this question"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d6d4c8] text-xs font-semibold text-[#5f6658]">
-                        AI
+                      <div className="mt-1 shrink-0">
+                        <MatchAvatar />
                       </div>
                       <div className={`max-w-[88%] ${assistantBubbleClass}`}>
                         <span aria-hidden="true" className={assistantBubbleTailClass} />
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{assistantName}</p>
                         {message.question}
                       </div>
                     </div>
@@ -1014,16 +1232,19 @@ export function OnboardingFlow() {
                   </button>
                 ))}
 
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d6d4c8] text-xs font-semibold text-[#5f6658]">
-                    AI
+                {typedIntro === copy.intro && (
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1 shrink-0">
+                      <MatchAvatar />
+                    </div>
+                    <div className={`max-w-[88%] ${assistantBubbleClass} text-[22px] font-medium leading-8 text-[#332d28] sm:text-[24px]`}>
+                      <span aria-hidden="true" className={assistantBubbleTailClass} />
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{assistantName}</p>
+                      {typedQuestion}
+                      <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse rounded-sm bg-[#6e7b64]" aria-hidden="true" />
+                    </div>
                   </div>
-                  <div className={`max-w-[88%] ${assistantBubbleClass} text-[22px] font-medium leading-8 text-[#332d28] sm:text-[24px]`}>
-                    <span aria-hidden="true" className={assistantBubbleTailClass} />
-                    {typedQuestion}
-                    <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse rounded-sm bg-[#6e7b64]" aria-hidden="true" />
-                  </div>
-                </div>
+                )}
 
                 <div className="pl-11">
                   <div className="rounded-[24px] bg-[#f2ede3] px-4 py-4 shadow-inner shadow-[#d9d1c2]/40">{renderAnswerControls()}</div>

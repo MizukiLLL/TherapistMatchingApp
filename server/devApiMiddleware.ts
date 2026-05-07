@@ -13,7 +13,7 @@ import {
   upsertUserPreferences,
 } from './backendStore';
 import { buildMatchGenerationResponse, generateMatches, MatchGenerationRequest, resolveMatchPreferences } from './matchingEngine';
-import { normalizePsychologyTodayProfile, PsychologyTodayProfilePayload } from './psychologyTodayProfile';
+import { fetchPsychologyTodayDirectoryProfiles, fetchPsychologyTodayProfile, normalizePsychologyTodayProfile, PsychologyTodayProfilePayload } from './psychologyTodayProfile';
 import { generatePlaceholderTmtiProfile, TmtiResponseInput } from './tmtiAdapter';
 
 type JsonPayload = Record<string, unknown>;
@@ -132,6 +132,207 @@ function getTmtiResponses(body: Record<string, unknown>): TmtiResponseInput[] {
     .filter((response): response is TmtiResponseInput => response !== null);
 }
 
+function mergeScrapedProfileWithRequest(
+  scrapedProfile: PsychologyTodayProfilePayload,
+  requestBody: PsychologyTodayProfilePayload & {
+    searchFilters?: {
+      areaCode?: string;
+      therapyType?: string;
+      insuranceProvider?: string;
+      insurancePlan?: string;
+    };
+    profileOverrides?: PsychologyTodayProfilePayload;
+  }
+): PsychologyTodayProfilePayload {
+  const searchFilters = requestBody.searchFilters;
+  const profileOverrides = requestBody.profileOverrides ?? {};
+
+  return {
+    ...scrapedProfile,
+    ...profileOverrides,
+    profileUrl: profileOverrides.profileUrl ?? scrapedProfile.profileUrl ?? requestBody.profileUrl ?? requestBody.url,
+    areaCodes: [
+      ...(scrapedProfile.areaCodes ?? []),
+      ...(scrapedProfile.areaCodesServed ?? []),
+      ...(scrapedProfile.zipCodes ?? []),
+      ...(searchFilters?.areaCode ? [searchFilters.areaCode] : []),
+      ...(profileOverrides.areaCodes ?? []),
+      ...(profileOverrides.areaCodesServed ?? []),
+      ...(profileOverrides.zipCodes ?? []),
+    ],
+    expertise: [
+      ...(scrapedProfile.expertise ?? []),
+      ...(scrapedProfile.therapyTypes ?? []),
+      ...(searchFilters?.therapyType ? [searchFilters.therapyType] : []),
+      ...(profileOverrides.expertise ?? []),
+      ...(profileOverrides.therapyTypes ?? []),
+    ],
+    insuranceProviders: [
+      ...(scrapedProfile.insuranceProviders ?? []),
+      ...(searchFilters?.insuranceProvider ? [searchFilters.insuranceProvider] : []),
+      ...(profileOverrides.insuranceProviders ?? []),
+    ],
+    insurance: profileOverrides.insurance ?? scrapedProfile.insurance ?? (
+      searchFilters?.insuranceProvider
+        ? [{ provider: searchFilters.insuranceProvider, plan: searchFilters.insurancePlan ?? null, acceptingNewPatients: true }]
+        : undefined
+    ),
+  };
+}
+
+function mergeScrapedProfileWithPreferences(
+  scrapedProfile: PsychologyTodayProfilePayload,
+  preferences: {
+    areaCode: string;
+    therapyTypes: string[];
+    insuranceProvider: string;
+    insurancePlan?: string;
+  }
+): PsychologyTodayProfilePayload {
+  return {
+    ...scrapedProfile,
+    areaCodes: [
+      ...(scrapedProfile.areaCodes ?? []),
+      ...(scrapedProfile.areaCodesServed ?? []),
+      ...(scrapedProfile.zipCodes ?? []),
+      preferences.areaCode,
+    ],
+    expertise: [
+      ...(scrapedProfile.expertise ?? []),
+      ...(scrapedProfile.therapyTypes ?? []),
+      ...preferences.therapyTypes,
+    ],
+    insuranceProviders: [
+      ...(scrapedProfile.insuranceProviders ?? []),
+      ...(preferences.insuranceProvider ? [preferences.insuranceProvider] : []),
+    ],
+    insurance: scrapedProfile.insurance ?? (
+      preferences.insuranceProvider
+        ? [{ provider: preferences.insuranceProvider, plan: preferences.insurancePlan ?? null, acceptingNewPatients: true }]
+        : undefined
+    ),
+  };
+}
+
+async function ingestPsychologyTodayProfilesForMatch(preferences: {
+  areaCode: string;
+  therapyTypes: string[];
+  insuranceProvider: string;
+  insurancePlan?: string;
+}): Promise<{
+  searchUrl: string;
+  fetchedProfileUrls: string[];
+  ingestedTherapistIds: string[];
+  skipped: Array<{ profileUrl: string; message: string }>;
+}> {
+  const primaryTherapyType = preferences.therapyTypes[0];
+  const fetchedDirectory = await fetchPsychologyTodayDirectoryProfiles({
+    areaCode: preferences.areaCode,
+    therapyType: primaryTherapyType,
+    limit: 5,
+  });
+  const ingestedTherapistIds: string[] = [];
+  const skipped: Array<{ profileUrl: string; message: string }> = [...fetchedDirectory.errors];
+
+  for (const scraped of fetchedDirectory.profiles) {
+    const profile = mergeScrapedProfileWithPreferences(scraped.profile, preferences);
+    const { therapist, errors } = normalizePsychologyTodayProfile(profile);
+
+    if (!therapist || errors.length > 0) {
+      skipped.push({
+        profileUrl: scraped.meta.sourceUrl,
+        message: errors.map((error) => `${error.field}: ${error.message}`).join('; '),
+      });
+      continue;
+    }
+
+    const record = upsertLiveTherapist(therapist);
+    ingestedTherapistIds.push(record.id);
+  }
+
+  return {
+    searchUrl: fetchedDirectory.searchUrl,
+    fetchedProfileUrls: fetchedDirectory.profileUrls,
+    ingestedTherapistIds,
+    skipped,
+  };
+}
+
+function buildMatchRequestFromBody(
+  body: Record<string, unknown> & {
+    searchFilters?: {
+      areaCode?: string;
+      therapyType?: string;
+      insuranceProvider?: string;
+      insurancePlan?: string;
+    };
+    matchPreferences?: MatchGenerationRequest;
+  }
+): MatchGenerationRequest | undefined {
+  if (body.matchPreferences) return body.matchPreferences;
+
+  if (body.searchFilters) {
+    return {
+      userId: typeof body.userId === 'string' ? body.userId : undefined,
+      areaCode: body.searchFilters.areaCode,
+      therapyType: body.searchFilters.therapyType,
+      insuranceProvider: body.searchFilters.insuranceProvider,
+      insurancePlan: body.searchFilters.insurancePlan,
+      preferredLanguage: typeof body.preferredLanguage === 'string' ? body.preferredLanguage : undefined,
+      carePreference: typeof body.carePreference === 'string' ? body.carePreference : undefined,
+    };
+  }
+
+  if (typeof body.userId === 'string') {
+    return { userId: body.userId };
+  }
+
+  return undefined;
+}
+
+function buildFetchedTherapistMatchReflection(
+  therapistId: string,
+  request: MatchGenerationRequest | undefined,
+  directory = getAllTherapists()
+) {
+  if (!request) return undefined;
+
+  const savedPreferences = request.userId ? getUserPreferences(request.userId) : undefined;
+  const savedTmtiProfile = request.userId ? getLatestTmtiProfile(request.userId) : undefined;
+  const { preferences, errors } = resolveMatchPreferences(
+    {
+      ...request,
+      cnipPreferenceProfile: request.cnipPreferenceProfile ?? savedPreferences?.cnipPreferenceProfile ?? savedTmtiProfile?.dimensionScores as MatchGenerationRequest['cnipPreferenceProfile'],
+    },
+    savedPreferences
+  );
+
+  if (errors.length > 0) {
+    return {
+      error: {
+        code: 'INVALID_MATCH_REFLECTION_INPUT',
+        details: errors,
+      },
+    };
+  }
+
+  const matches = generateMatches(preferences, directory);
+  const fetchedTherapistMatch = matches.find((match) => match.therapistId === therapistId);
+
+  return {
+    fetchedTherapistMatch,
+    rank: fetchedTherapistMatch ? matches.findIndex((match) => match.therapistId === therapistId) + 1 : null,
+    total: matches.length,
+    reflection: fetchedTherapistMatch
+      ? [
+          `Fetched therapist scored ${fetchedTherapistMatch.final_score} overall.`,
+          ...fetchedTherapistMatch.hard_constraint_reasons,
+          ...fetchedTherapistMatch.explanation.tokens,
+        ]
+      : ['Fetched therapist did not appear in the generated match list for these preferences.'],
+  };
+}
+
 export function createDevApiMiddleware() {
   return async (request: any, response: any, next: () => void) => {
     const requestUrl = new URL(request.url ?? '/', 'http://localhost');
@@ -141,6 +342,88 @@ export function createDevApiMiddleware() {
     const userMatchesMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/matches$/);
     const userTmtiProfileMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/tmti-profile$/);
     const userTmtiResponsesMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/tmti-responses$/);
+
+    if (requestUrl.pathname === '/therapists/psychologytoday/fetch') {
+      if (request.method !== 'POST') {
+        sendMethodNotAllowed(response, ['POST']);
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request) as PsychologyTodayProfilePayload & {
+          searchFilters?: {
+            areaCode?: string;
+            therapyType?: string;
+            insuranceProvider?: string;
+            insurancePlan?: string;
+          };
+          matchPreferences?: MatchGenerationRequest;
+          profileOverrides?: PsychologyTodayProfilePayload;
+        };
+        const profileUrl = typeof body.profileUrl === 'string' ? body.profileUrl : body.url;
+
+        if (!profileUrl) {
+          sendJson(response, 400, {
+            error: {
+              code: 'MISSING_PSYCHOLOGYTODAY_URL',
+              message: 'POST /therapists/psychologytoday/fetch requires profileUrl or url.',
+            },
+          });
+          return;
+        }
+
+        const scraped = await fetchPsychologyTodayProfile(profileUrl);
+        const mergedProfile = mergeScrapedProfileWithRequest(scraped.profile, body);
+        const { therapist, errors } = normalizePsychologyTodayProfile(mergedProfile);
+
+        if (!therapist || errors.length > 0) {
+          sendJson(response, 400, {
+            error: {
+              code: 'INVALID_FETCHED_PSYCHOLOGYTODAY_PROFILE',
+              message: 'Fetched PsychologyToday profile needs more structured fields before it can be matched.',
+              details: errors,
+            },
+            scraped,
+          } as unknown as JsonPayload);
+          return;
+        }
+
+        const data = upsertLiveTherapist(therapist);
+        const searchFilters = body.searchFilters;
+        const directory = getAllTherapists();
+        const liveResult = searchFilters
+          ? buildTherapistSearchResponse({
+              areaCode: searchFilters.areaCode ?? data.areaCodesServed[0],
+              therapyType: searchFilters.therapyType ?? data.therapyTypes[0],
+              insuranceProvider: searchFilters.insuranceProvider ?? data.insurance[0]?.provider ?? '',
+              insurancePlan: searchFilters.insurancePlan,
+              limit: 20,
+            }, directory)
+          : undefined;
+        const matchReflection = buildFetchedTherapistMatchReflection(data.id, buildMatchRequestFromBody(body), directory);
+
+        sendJson(response, 200, {
+          data,
+          scraped,
+          liveResult,
+          matchReflection,
+          meta: {
+            source: 'psychologytoday',
+            fetched: true,
+            availableImmediately: true,
+            generatedAt: new Date().toISOString(),
+          },
+        } as unknown as JsonPayload);
+      } catch (error) {
+        sendJson(response, 400, {
+          error: {
+            code: 'PSYCHOLOGYTODAY_FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Could not fetch PsychologyToday profile.',
+          },
+        });
+      }
+      return;
+    }
 
     if (requestUrl.pathname === '/therapists/psychologytoday') {
       if (request.method !== 'POST') {
@@ -172,6 +455,7 @@ export function createDevApiMiddleware() {
 
         const data = upsertLiveTherapist(therapist);
         const searchFilters = body.searchFilters;
+        const directory = getAllTherapists();
         const liveResult = searchFilters
           ? buildTherapistSearchResponse({
               areaCode: searchFilters.areaCode ?? data.areaCodesServed[0],
@@ -179,12 +463,14 @@ export function createDevApiMiddleware() {
               insuranceProvider: searchFilters.insuranceProvider ?? data.insurance[0]?.provider ?? '',
               insurancePlan: searchFilters.insurancePlan,
               limit: 20,
-            }, getAllTherapists())
+            }, directory)
           : undefined;
+        const matchReflection = buildFetchedTherapistMatchReflection(data.id, buildMatchRequestFromBody(body), directory);
 
         sendJson(response, 200, {
           data,
           liveResult,
+          matchReflection,
           meta: {
             source: 'psychologytoday',
             availableImmediately: true,
@@ -525,7 +811,9 @@ export function createDevApiMiddleware() {
       }
 
       try {
-        const body = await readJsonBody(request) as MatchGenerationRequest;
+        const body = await readJsonBody(request) as MatchGenerationRequest & {
+          fetchPsychologyToday?: boolean;
+        };
         const savedPreferences = body.userId ? getUserPreferences(body.userId) : undefined;
         const savedTmtiProfile = body.userId ? getLatestTmtiProfile(body.userId) : undefined;
         const { preferences, errors } = resolveMatchPreferences(
@@ -547,11 +835,43 @@ export function createDevApiMiddleware() {
           return;
         }
 
-        const startedAt = performance.now();
-        const matches = saveGeneratedMatches(preferences.userId, generateMatches(preferences, getAllTherapists()));
-        const elapsedMs = Math.round((performance.now() - startedAt) * 100) / 100;
+        let psychologyTodayFetch:
+          | Awaited<ReturnType<typeof ingestPsychologyTodayProfilesForMatch>>
+          | { error: { message: string } }
+          | undefined;
 
-        sendJson(response, 200, buildMatchGenerationResponse(preferences, matches, elapsedMs) as unknown as JsonPayload);
+        if (body.fetchPsychologyToday) {
+          try {
+            psychologyTodayFetch = await ingestPsychologyTodayProfilesForMatch(preferences);
+          } catch (error) {
+            psychologyTodayFetch = {
+              error: {
+                message: error instanceof Error ? error.message : 'Could not fetch PsychologyToday profiles.',
+              },
+            };
+          }
+        }
+
+        const directory = getAllTherapists();
+        const fetchedTherapistIds =
+          psychologyTodayFetch && 'ingestedTherapistIds' in psychologyTodayFetch
+            ? psychologyTodayFetch.ingestedTherapistIds
+            : [];
+        const matchDirectory = fetchedTherapistIds.length > 0
+          ? directory.filter((therapist) => fetchedTherapistIds.includes(therapist.id))
+          : directory;
+        const startedAt = performance.now();
+        const matches = saveGeneratedMatches(preferences.userId, generateMatches(preferences, matchDirectory));
+        const elapsedMs = Math.round((performance.now() - startedAt) * 100) / 100;
+        const responsePayload = buildMatchGenerationResponse(preferences, matches, elapsedMs) as unknown as JsonPayload & {
+          meta: Record<string, unknown>;
+        };
+
+        if (psychologyTodayFetch) {
+          responsePayload.meta.psychologyTodayFetch = psychologyTodayFetch;
+        }
+
+        sendJson(response, 200, responsePayload);
       } catch (error) {
         sendJson(response, 400, {
           error: {
