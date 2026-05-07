@@ -37,6 +37,22 @@ function sendMethodNotAllowed(response: any, allowedMethods: string[]): void {
 }
 
 function readJsonBody(request: any): Promise<Record<string, unknown>> {
+  if (request.body && typeof request.body === 'object') {
+    return Promise.resolve(request.body);
+  }
+
+  if (typeof request.body === 'string') {
+    try {
+      return Promise.resolve(request.body.trim() ? JSON.parse(request.body) : {});
+    } catch {
+      return Promise.reject(new Error('Request body must be valid JSON.'));
+    }
+  }
+
+  if (typeof request.on !== 'function') {
+    return Promise.resolve({});
+  }
+
   return new Promise((resolve, reject) => {
     let rawBody = '';
 
