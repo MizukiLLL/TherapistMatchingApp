@@ -536,7 +536,7 @@ export function OnboardingFlow() {
   const [recommendations, setRecommendations] = useState<TherapistRecommendation[]>([]);
 
   const locale = getLocaleFromPreferredLanguage(formData.preferredLanguage);
-  const copy = copyByLocale[locale];
+  const copy: typeof copyByLocale.en = { ...copyByLocale.en, ...copyByLocale[locale] };
   const progress = ((step + 1) / TOTAL_STEPS) * 100;
   const selectedConcernLabels = useMemo(
     () =>
@@ -928,7 +928,7 @@ export function OnboardingFlow() {
       const virtualTherapistStyles = cnipStyleOptions.slice(0, 4);
       const previewLines = [
         `I felt ${selectedConcernSample}.`,
-        ...Object.values(formData.lifeAspectNotesByCategory)
+        ...(Object.values(formData.lifeAspectNotesByCategory) as string[])
           .map((value) => value.trim())
           .filter(Boolean)
           .slice(0, 1),

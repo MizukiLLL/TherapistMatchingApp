@@ -2,6 +2,11 @@ import { OnboardingFormData, SavedOnboardingState } from './onboardingTypes';
 import type { TherapistRecommendation } from './utils/therapistRecommendations';
 
 const STORAGE_KEY = 'therapist-matcher-onboarding';
+const API_BASE_PATH = '/api';
+
+function apiPath(path: string): string {
+  return `${API_BASE_PATH}${path}`;
+}
 
 function readSavedState(): SavedOnboardingState | null {
   const rawValue = window.localStorage.getItem(STORAGE_KEY);
@@ -28,7 +33,7 @@ export async function loadOnboardingState(): Promise<SavedOnboardingState | null
   }
 
   try {
-    const response = await fetch(`/users/${encodeURIComponent(saved.userId)}/onboarding`);
+    const response = await fetch(apiPath(`/users/${encodeURIComponent(saved.userId)}/onboarding`));
     if (!response.ok) {
       return saved;
     }
@@ -68,7 +73,7 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
   };
 
   try {
-    const userResponse = await fetch('/users', {
+    const userResponse = await fetch(apiPath('/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: userId, preferredLanguage: data.preferredLanguage, areaCode: data.areaCode }),
@@ -78,7 +83,7 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
       throw new Error('Failed to save user');
     }
 
-    const preferencesResponse = await fetch(`/users/${userId}/preferences`, {
+    const preferencesResponse = await fetch(apiPath(`/users/${userId}/preferences`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -152,7 +157,7 @@ type MatchGenerationResponse = {
 };
 
 export async function generateTherapistMatches(data: OnboardingFormData, userId: string): Promise<TherapistRecommendation[]> {
-  const response = await fetch('/matches/generate', {
+  const response = await fetch(apiPath('/matches/generate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

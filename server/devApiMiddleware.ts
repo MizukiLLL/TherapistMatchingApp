@@ -340,6 +340,9 @@ function buildFetchedTherapistMatchReflection(
 export function createDevApiMiddleware() {
   return async (request: any, response: any, next: () => void) => {
     const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+    if (requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/')) {
+      requestUrl.pathname = requestUrl.pathname.replace(/^\/api(?=\/|$)/, '') || '/';
+    }
     const userMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)$/);
     const userOnboardingMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/onboarding$/);
     const userPreferencesMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/preferences$/);
@@ -505,6 +508,13 @@ export function createDevApiMiddleware() {
             licenseStates: toStringArray(body.licenseStates),
             areaCodesServed: toStringArray(body.areaCodesServed),
             therapyTypes: toStringArray(body.therapyTypes),
+            therapyModels: toStringArray(body.therapyModels),
+            conversationStyleProfile: {
+              directiveness: 5,
+              emotionalIntensity: 5,
+              pastOrientation: 5,
+              warmSupport: 5,
+            },
             telehealthAvailable: toBoolean(body.telehealthAvailable),
             inPersonAvailable: toBoolean(body.inPersonAvailable),
             hourlyRateMin: toNullableNumber(body.hourlyRateMin),

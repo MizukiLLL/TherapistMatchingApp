@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import os from 'os';
 import path from 'path';
 
-export const databaseDirectory = path.resolve(process.cwd(), 'server', 'data');
+const writableRoot = process.env.VERCEL ? os.tmpdir() : path.resolve(process.cwd(), 'server', 'data');
+
+export const databaseDirectory = process.env.VERCEL ? path.join(writableRoot, 'therapist-matcher-data') : writableRoot;
 export const databaseFilePath = path.join(databaseDirectory, 'therapist-matcher-db.json');
 
 function ensureDatabaseDirectory(): void {
