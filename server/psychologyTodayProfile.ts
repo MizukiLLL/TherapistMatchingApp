@@ -1,4 +1,4 @@
-import { CnipConversationStyleProfile, TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory';
+import type { CnipConversationStyleProfile, TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory.ts';
 
 export type PsychologyTodayProfilePayload = {
   id?: string;

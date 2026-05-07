@@ -1,7 +1,7 @@
-import type { TherapistMatch } from './matchingEngine';
-import { readDatabase, writeDatabase } from './localDatabase';
-import { therapistDirectory, type TherapistDirectoryRecord } from './therapistDirectory';
-import type { CnipConversationStyle, OnboardingFormData, SavedOnboardingState } from '../onboardingTypes';
+import type { TherapistMatch } from './matchingEngine.ts';
+import { readDatabase, writeDatabase } from './localDatabase.ts';
+import { therapistDirectory, type TherapistDirectoryRecord } from './therapistDirectory.ts';
+import type { CnipConversationStyle, OnboardingFormData, SavedOnboardingState } from '../onboardingTypes.ts';
 
 export type UserRecord = {
   id: string;

@@ -1,5 +1,5 @@
-import { getAllTherapists } from './backendStore';
-import { TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory';
+import { getAllTherapists } from './backendStore.ts';
+import type { TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory.ts';
 
 export type TherapistSearchFilters = {
   areaCode: string;

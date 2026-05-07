@@ -1,4 +1,4 @@
-import { buildTherapistSearchResponse, parseTherapistSearchFilters } from './therapistSearch';
+import { buildTherapistSearchResponse, parseTherapistSearchFilters } from './therapistSearch.ts';
 import {
   getAllTherapists,
   getGeneratedMatches,
@@ -11,10 +11,13 @@ import {
   upsertLiveTherapist,
   upsertUser,
   upsertUserPreferences,
-} from './backendStore';
-import { buildMatchGenerationResponse, generateMatches, MatchGenerationRequest, resolveMatchPreferences } from './matchingEngine';
-import { fetchPsychologyTodayDirectoryProfiles, fetchPsychologyTodayProfile, normalizePsychologyTodayProfile, PsychologyTodayProfilePayload } from './psychologyTodayProfile';
-import { generateCnipConversationProfile, TmtiResponseInput } from './tmtiAdapter';
+} from './backendStore.ts';
+import { buildMatchGenerationResponse, generateMatches, resolveMatchPreferences } from './matchingEngine.ts';
+import type { MatchGenerationRequest } from './matchingEngine.ts';
+import { fetchPsychologyTodayDirectoryProfiles, fetchPsychologyTodayProfile, normalizePsychologyTodayProfile } from './psychologyTodayProfile.ts';
+import type { PsychologyTodayProfilePayload } from './psychologyTodayProfile.ts';
+import { generateCnipConversationProfile } from './tmtiAdapter.ts';
+import type { TmtiResponseInput } from './tmtiAdapter.ts';
 
 type JsonPayload = Record<string, unknown>;
 

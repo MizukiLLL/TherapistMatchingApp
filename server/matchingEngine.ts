@@ -1,5 +1,5 @@
-import { getAllTherapists, type UserPreferenceRecord } from './backendStore';
-import { TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory';
+import { getAllTherapists, type UserPreferenceRecord } from './backendStore.ts';
+import type { TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory.ts';
 
 type StyleSignalProfile = {
   directiveness: number;

@@ -1,4 +1,4 @@
-import { createDevApiMiddleware } from '../server/devApiMiddleware';
+import { createDevApiMiddleware } from '../server/devApiMiddleware.ts';
 
 const apiMiddleware = createDevApiMiddleware();
 
