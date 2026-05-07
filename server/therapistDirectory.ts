@@ -4,6 +4,13 @@ export type TherapistInsurance = {
   acceptingNewPatients: boolean;
 };
 
+export type CnipConversationStyleProfile = {
+  directiveness: number;
+  emotionalIntensity: number;
+  pastOrientation: number;
+  warmSupport: number;
+};
+
 export type TherapistDirectoryRecord = {
   id: string;
   fullName: string;
@@ -13,6 +20,8 @@ export type TherapistDirectoryRecord = {
   licenseStates: string[];
   areaCodesServed: string[];
   therapyTypes: string[];
+  therapyModels: string[];
+  conversationStyleProfile: CnipConversationStyleProfile;
   telehealthAvailable: boolean;
   inPersonAvailable: boolean;
   hourlyRateMin: number | null;
@@ -32,6 +41,8 @@ export const therapistDirectory: TherapistDirectoryRecord[] = [
     licenseStates: ['NY'],
     areaCodesServed: ['10001', '10002', '10003', '11201'],
     therapyTypes: ['Anxiety', 'Relationship conflict', 'Family boundaries', 'Communication skills', 'Career change', 'Workplace conflict', 'People-pleasing'],
+    therapyModels: ['Emotionally Focused Therapy', 'CBT', 'Family Systems'],
+    conversationStyleProfile: { directiveness: 6, emotionalIntensity: 7, pastOrientation: 5, warmSupport: 8 },
     telehealthAvailable: true,
     inPersonAvailable: true,
     hourlyRateMin: 165,
@@ -54,6 +65,8 @@ export const therapistDirectory: TherapistDirectoryRecord[] = [
     licenseStates: ['NY'],
     areaCodesServed: ['10001', '10010', '10011', '10018'],
     therapyTypes: ['Depression', 'Career change', 'College / school stress', 'Sleep problems', 'Self-esteem', 'Stress and burnout', 'ADHD or focus concerns', 'Job loss', 'Substance use concerns'],
+    therapyModels: ['CBT', 'Solution-Focused Therapy', 'Behavioral Activation'],
+    conversationStyleProfile: { directiveness: 9, emotionalIntensity: 4, pastOrientation: 2, warmSupport: 4 },
     telehealthAvailable: true,
     inPersonAvailable: false,
     hourlyRateMin: 140,
@@ -75,6 +88,8 @@ export const therapistDirectory: TherapistDirectoryRecord[] = [
     licenseStates: ['CA'],
     areaCodesServed: ['90001', '90012', '90026', '90027'],
     therapyTypes: ['Trauma / PTSD', 'Panic attacks', 'Identity exploration', 'Loneliness', 'Relocation', 'Grief and loss', 'Immigration or acculturation', 'Cultural identity', 'Social anxiety'],
+    therapyModels: ['EMDR', 'Psychodynamic Therapy', 'Somatic Therapy'],
+    conversationStyleProfile: { directiveness: 4, emotionalIntensity: 9, pastOrientation: 9, warmSupport: 7 },
     telehealthAvailable: true,
     inPersonAvailable: true,
     hourlyRateMin: 190,
@@ -96,6 +111,8 @@ export const therapistDirectory: TherapistDirectoryRecord[] = [
     licenseStates: ['CA'],
     areaCodesServed: ['94102', '94103', '94107', '94110'],
     therapyTypes: ['Anxiety', 'OCD tendencies', 'Body image concerns', 'Medication concerns', 'Chronic pain', 'Eating concerns', 'Appetite changes', 'Fatigue or low energy', 'Sexual health concerns', 'Disability adjustment', 'Serious diagnosis'],
+    therapyModels: ['ACT', 'CBT', 'Mindfulness-Based Therapy'],
+    conversationStyleProfile: { directiveness: 7, emotionalIntensity: 5, pastOrientation: 4, warmSupport: 7 },
     telehealthAvailable: true,
     inPersonAvailable: false,
     hourlyRateMin: 150,
@@ -117,6 +134,8 @@ export const therapistDirectory: TherapistDirectoryRecord[] = [
     licenseStates: ['WA'],
     areaCodesServed: ['98101', '98102', '98103', '98109'],
     therapyTypes: ['Parenthood', 'Family boundaries', 'Relationship conflict', 'Self-esteem', 'Communication skills', 'Caregiving stress', 'Aging parents', 'Marriage or commitment', 'Dating stress', 'Pregnancy or postpartum health', 'Fertility or family planning'],
+    therapyModels: ['Internal Family Systems', 'Gottman Method', 'Narrative Therapy'],
+    conversationStyleProfile: { directiveness: 5, emotionalIntensity: 6, pastOrientation: 6, warmSupport: 9 },
     telehealthAvailable: true,
     inPersonAvailable: true,
     hourlyRateMin: 135,
@@ -138,6 +157,8 @@ export const therapistDirectory: TherapistDirectoryRecord[] = [
     licenseStates: ['NY'],
     areaCodesServed: ['10001'],
     therapyTypes: ['Anxiety'],
+    therapyModels: ['CBT'],
+    conversationStyleProfile: { directiveness: 5, emotionalIntensity: 5, pastOrientation: 5, warmSupport: 5 },
     telehealthAvailable: true,
     inPersonAvailable: true,
     hourlyRateMin: null,

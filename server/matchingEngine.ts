@@ -46,17 +46,21 @@ export type TherapistMatch = {
   hard_constraints_pass: boolean;
   hard_constraint_reasons: string[];
   preference_score: number;
-  tmti_score: number;
+  cnip_score: number;
+  therapy_model_score: number;
   final_score: number;
   explanation: {
     tokens: string[];
     matchedTherapyTypes: string[];
+    matchedTherapyModels: string[];
+    recommendedTherapyModels: string[];
     matchingInsurance: TherapistInsurance[];
     scoreBreakdown: {
       expertise: number;
+      therapyModel: number;
       language: number;
       sessionFormat: number;
-      tmti: number;
+      cnipStyle: number;
     };
   };
   ranked_at: string;
@@ -76,14 +80,6 @@ export type MatchGenerationResponse = {
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const styleKeys: Array<keyof StyleSignalProfile> = ['directiveness', 'emotionalIntensity', 'pastOrientation', 'warmSupport'];
-
-const therapistStyleProfiles: Record<string, StyleSignalProfile> = {
-  'maya-chen': { directiveness: 6, emotionalIntensity: 7, pastOrientation: 5, warmSupport: 8 },
-  'jonathan-reed': { directiveness: 9, emotionalIntensity: 4, pastOrientation: 2, warmSupport: 4 },
-  'sofia-morales': { directiveness: 4, emotionalIntensity: 9, pastOrientation: 9, warmSupport: 7 },
-  'emily-wong': { directiveness: 7, emotionalIntensity: 5, pastOrientation: 4, warmSupport: 7 },
-  'david-kim': { directiveness: 5, emotionalIntensity: 6, pastOrientation: 6, warmSupport: 9 },
-};
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '').trim();
@@ -179,20 +175,90 @@ function scoreSessionFormat(therapist: TherapistDirectoryRecord, carePreference?
   return 70;
 }
 
-function scoreStyleSignal(therapistId: string, profile?: StyleSignalProfile): number {
+function scoreStyleSignal(therapist: TherapistDirectoryRecord, profile?: StyleSignalProfile): number {
   if (!profile || styleKeys.every((key) => !profile[key])) return 50;
-
-  const therapistProfile = therapistStyleProfiles[therapistId];
-  if (!therapistProfile) return 50;
+  const therapistProfile = therapist.conversationStyleProfile ?? {
+    directiveness: 5,
+    emotionalIntensity: 5,
+    pastOrientation: 5,
+    warmSupport: 6,
+  };
 
   const totalDistance = styleKeys.reduce((sum, key) => sum + Math.abs(profile[key] - therapistProfile[key]), 0);
   const maxDistance = styleKeys.length * 10;
   return clampScore((1 - totalDistance / maxDistance) * 100);
 }
 
+function modelAliases(model: string): string[] {
+  const normalizedModel = normalizeForCompare(model);
+  if (normalizedModel.includes('cognitive') || normalizedModel === 'cbt') return ['cbt', 'cognitive behavioral therapy'];
+  if (normalizedModel.includes('acceptance') || normalizedModel === 'act') return ['act', 'acceptance and commitment therapy'];
+  if (normalizedModel.includes('emdr')) return ['emdr'];
+  if (normalizedModel.includes('somatic')) return ['somatic therapy', 'somatic'];
+  if (normalizedModel.includes('psychodynamic')) return ['psychodynamic therapy', 'psychodynamic'];
+  if (normalizedModel.includes('emotionally focused')) return ['emotionally focused therapy', 'eft'];
+  if (normalizedModel.includes('internal family systems')) return ['internal family systems', 'ifs'];
+  if (normalizedModel.includes('family systems')) return ['family systems'];
+  if (normalizedModel.includes('gottman')) return ['gottman method', 'gottman'];
+  if (normalizedModel.includes('narrative')) return ['narrative therapy', 'narrative'];
+  if (normalizedModel.includes('mindfulness')) return ['mindfulness-based therapy', 'mindfulness'];
+  if (normalizedModel.includes('solution')) return ['solution-focused therapy', 'solution-focused'];
+  if (normalizedModel.includes('behavioral activation')) return ['behavioral activation'];
+
+  return [normalizedModel];
+}
+
+function getRecommendedTherapyModels(therapyTypes: string[]): string[] {
+  const recommendations = new Set<string>();
+
+  for (const therapyType of therapyTypes.map(normalizeForCompare)) {
+    if (/anxiety|panic|ocd|sleep|adhd|focus|stress|burnout|depression|self-esteem/.test(therapyType)) {
+      ['CBT', 'ACT', 'Mindfulness-Based Therapy', 'Solution-Focused Therapy', 'Behavioral Activation'].forEach((model) => recommendations.add(model));
+    }
+
+    if (/trauma|ptsd|grief|identity|relocation|immigration|cultural|loneliness|social anxiety/.test(therapyType)) {
+      ['EMDR', 'Somatic Therapy', 'Psychodynamic Therapy', 'Narrative Therapy'].forEach((model) => recommendations.add(model));
+    }
+
+    if (/relationship|family|communication|parenthood|caregiving|marriage|dating|boundaries|fertility|postpartum/.test(therapyType)) {
+      ['Emotionally Focused Therapy', 'Family Systems', 'Internal Family Systems', 'Gottman Method', 'Narrative Therapy'].forEach((model) => recommendations.add(model));
+    }
+
+    if (/chronic pain|body|eating|appetite|health|medication|disability|diagnosis|sexual health/.test(therapyType)) {
+      ['ACT', 'CBT', 'Mindfulness-Based Therapy', 'Somatic Therapy'].forEach((model) => recommendations.add(model));
+    }
+  }
+
+  return Array.from(recommendations);
+}
+
+function getMatchedTherapyModels(therapistModels: string[], recommendedModels: string[]): string[] {
+  const therapistAliasSet = new Set(therapistModels.flatMap(modelAliases));
+
+  return recommendedModels.filter((model) => modelAliases(model).some((alias) => therapistAliasSet.has(alias)));
+}
+
+function scoreTherapyModels(therapist: TherapistDirectoryRecord, recommendedModels: string[]): number {
+  if (recommendedModels.length === 0) return 70;
+  const therapistModels = therapist.therapyModels ?? [];
+  if (therapistModels.length === 0) return 45;
+
+  const matchedModels = getMatchedTherapyModels(therapistModels, recommendedModels);
+  return clampScore(Math.min(1, matchedModels.length / Math.min(recommendedModels.length, 3)) * 100);
+}
+
 function publicTherapist(therapist: TherapistDirectoryRecord): Omit<TherapistDirectoryRecord, 'insurance' | 'isActive'> {
   const { insurance: _insurance, isActive: _isActive, ...publicRecord } = therapist;
-  return publicRecord;
+  return {
+    ...publicRecord,
+    therapyModels: therapist.therapyModels ?? [],
+    conversationStyleProfile: therapist.conversationStyleProfile ?? {
+      directiveness: 5,
+      emotionalIntensity: 5,
+      pastOrientation: 5,
+      warmSupport: 6,
+    },
+  };
 }
 
 function createMatchId(userId: string, therapistId: string): string {
@@ -260,9 +326,12 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
       const formatScore = scoreSessionFormat(therapist, preferences.carePreference);
       const areaScore = scoreArea(therapist, preferences.areaCode);
       const insuranceScore = scoreInsurance(matchingInsurance, preferences);
-      const preferenceScore = clampScore(expertiseScore * 0.42 + languageScore * 0.2 + formatScore * 0.16 + areaScore * 0.12 + insuranceScore * 0.1);
-      const tmtiScore = scoreStyleSignal(therapist.id, preferences.cnipPreferenceProfile);
-      const finalScore = clampScore(preferenceScore * 0.7 + tmtiScore * 0.3);
+      const recommendedTherapyModels = getRecommendedTherapyModels(preferences.therapyTypes);
+      const matchedTherapyModels = getMatchedTherapyModels(therapist.therapyModels ?? [], recommendedTherapyModels);
+      const therapyModelScore = scoreTherapyModels(therapist, recommendedTherapyModels);
+      const preferenceScore = clampScore(expertiseScore * 0.34 + therapyModelScore * 0.18 + languageScore * 0.18 + formatScore * 0.14 + areaScore * 0.1 + insuranceScore * 0.06);
+      const cnipScore = scoreStyleSignal(therapist, preferences.cnipPreferenceProfile);
+      const finalScore = clampScore(preferenceScore * 0.68 + cnipScore * 0.32);
       const insuranceLabel = preferences.insurancePlan
         ? `${preferences.insuranceProvider} ${preferences.insurancePlan}`
         : preferences.insuranceProvider;
@@ -290,26 +359,35 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
         hard_constraints_pass: passesHardConstraints,
         hard_constraint_reasons: reasons,
         preference_score: preferenceScore,
-        tmti_score: tmtiScore,
+        cnip_score: cnipScore,
+        therapy_model_score: therapyModelScore,
         final_score: finalScore,
         explanation: {
           tokens: [
             ...(sourceToken ? [sourceToken] : []),
             passesHardConstraints ? 'Exact match on ZIP, focus, and insurance.' : 'Best available partial match; confirm details before booking.',
             `Matched ${matchedTherapyTypes.length} therapy focus${matchedTherapyTypes.length === 1 ? '' : 'es'}.`,
+            matchedTherapyModels.length > 0
+              ? `Therapy model fit: ${matchedTherapyModels.slice(0, 3).join(', ')}.`
+              : recommendedTherapyModels.length > 0
+                ? `Recommended model families to confirm: ${recommendedTherapyModels.slice(0, 3).join(', ')}.`
+                : 'Therapy model fit is based on the therapist profile and selected concerns.',
+            `C-NIP conversation style fit: ${cnipScore}.`,
             `Language fit: ${languageScore}.`,
             `Session format fit: ${formatScore}.`,
             `Location fit: ${areaScore}.`,
             `Insurance fit: ${insuranceScore}.`,
-            `TMTI placeholder score: ${tmtiScore}.`,
           ],
           matchedTherapyTypes: topTherapyTypes,
+          matchedTherapyModels,
+          recommendedTherapyModels,
           matchingInsurance,
           scoreBreakdown: {
             expertise: expertiseScore,
+            therapyModel: therapyModelScore,
             language: languageScore,
             sessionFormat: formatScore,
-            tmti: tmtiScore,
+            cnipStyle: cnipScore,
           },
         },
         ranked_at: rankedAt,

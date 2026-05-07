@@ -1,4 +1,4 @@
-import { TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory';
+import { CnipConversationStyleProfile, TherapistDirectoryRecord, TherapistInsurance } from './therapistDirectory';
 
 export type PsychologyTodayProfilePayload = {
   id?: string;
@@ -17,6 +17,7 @@ export type PsychologyTodayProfilePayload = {
   expertise?: string[];
   therapyTypes?: string[];
   therapyModels?: string[];
+  conversationStyleProfile?: CnipConversationStyleProfile;
   sessionFormats?: string[];
   insuranceProviders?: string[];
   insurance?: Array<Partial<TherapistInsurance>>;
@@ -103,6 +104,50 @@ function getInsurance(profile: PsychologyTodayProfilePayload): TherapistInsuranc
     plan: null,
     acceptingNewPatients: true,
   }));
+}
+
+function inferConversationStyleProfile(profile: PsychologyTodayProfilePayload): CnipConversationStyleProfile {
+  if (profile.conversationStyleProfile) return profile.conversationStyleProfile;
+
+  const text = [
+    profile.bio,
+    ...(profile.therapyModels ?? []),
+    ...(profile.therapyTypes ?? []),
+    ...(profile.expertise ?? []),
+  ].join(' ').toLocaleLowerCase();
+  const profileScore: CnipConversationStyleProfile = {
+    directiveness: 5,
+    emotionalIntensity: 5,
+    pastOrientation: 5,
+    warmSupport: 6,
+  };
+
+  if (/cbt|act|solution-focused|behavioral|skills|coach|practical|homework/.test(text)) {
+    profileScore.directiveness += 3;
+    profileScore.pastOrientation -= 2;
+  }
+
+  if (/emdr|trauma|somatic|emotion|experiential|intensive/.test(text)) {
+    profileScore.emotionalIntensity += 3;
+    profileScore.pastOrientation += 2;
+  }
+
+  if (/psychodynamic|psychoanalytic|childhood|attachment|depth|history/.test(text)) {
+    profileScore.pastOrientation += 3;
+    profileScore.emotionalIntensity += 1;
+  }
+
+  if (/family systems|internal family systems|ifs|narrative|relational|gottman|emotionally focused|supportive|warm/.test(text)) {
+    profileScore.warmSupport += 3;
+    profileScore.directiveness -= 1;
+  }
+
+  return {
+    directiveness: Math.max(0, Math.min(10, profileScore.directiveness)),
+    emotionalIntensity: Math.max(0, Math.min(10, profileScore.emotionalIntensity)),
+    pastOrientation: Math.max(0, Math.min(10, profileScore.pastOrientation)),
+    warmSupport: Math.max(0, Math.min(10, profileScore.warmSupport)),
+  };
 }
 
 function getMetaContent(html: string, propertyName: string): string {
@@ -225,6 +270,21 @@ export function extractPsychologyTodayProfileFromHtml(sourceUrl: string, html: s
     'Caregiving stress',
   ];
   const knownInsurers = ['Aetna', 'Cigna', 'UnitedHealthcare', 'Oxford', 'Oscar', 'Blue Shield', 'Kaiser', 'Premera', 'Regence', 'Anthem', 'Blue Cross'];
+  const knownTherapyModels = [
+    'CBT',
+    'ACT',
+    'EMDR',
+    'Somatic Therapy',
+    'Psychodynamic Therapy',
+    'Emotionally Focused Therapy',
+    'Family Systems',
+    'Internal Family Systems',
+    'Gottman Method',
+    'Narrative Therapy',
+    'Mindfulness-Based Therapy',
+    'Solution-Focused Therapy',
+    'Behavioral Activation',
+  ];
   const zipCodes = Array.from(new Set((searchableText.match(/\b\d{5}\b/g) ?? []).filter((value) => !/^00000$/.test(value))));
   const stateMatches = Array.from(new Set((searchableText.match(/\b[A-Z]{2}\s+\d{5}\b/g) ?? []).map((value) => value.slice(0, 2))));
   const sessionFormats = [
@@ -251,6 +311,7 @@ export function extractPsychologyTodayProfileFromHtml(sourceUrl: string, html: s
       licenseStates: stateMatches,
       areaCodes: zipCodes,
       expertise: pickKnownValues(searchableText, knownTherapyTypes),
+      therapyModels: pickKnownValues(searchableText, knownTherapyModels),
       sessionFormats,
       insuranceProviders: pickKnownValues(searchableText, knownInsurers),
       hourlyRateMin: rates.hourlyRateMin,
@@ -362,7 +423,8 @@ export function normalizePsychologyTodayProfile(profile: PsychologyTodayProfileP
   const fullName = normalize(profile.fullName) || normalize(profile.name);
   const credentials = normalize(profile.credentials);
   const areaCodesServed = getAreaCodes(profile);
-  const therapyTypes = normalizeList(profile.therapyTypes).concat(normalizeList(profile.expertise), normalizeList(profile.therapyModels))
+  const therapyModels = normalizeList(profile.therapyModels);
+  const therapyTypes = normalizeList(profile.therapyTypes).concat(normalizeList(profile.expertise))
     .filter((value, index, values) => values.findIndex((candidate) => candidate.toLocaleLowerCase() === value.toLocaleLowerCase()) === index);
   const insurance = getInsurance(profile);
   const errors: PsychologyTodayProfileValidationError[] = [];
@@ -404,6 +466,8 @@ export function normalizePsychologyTodayProfile(profile: PsychologyTodayProfileP
       licenseStates: normalizeList(profile.licenseStates),
       areaCodesServed,
       therapyTypes,
+      therapyModels,
+      conversationStyleProfile: inferConversationStyleProfile(profile),
       telehealthAvailable: sessionFormats.length === 0 || sessionFormats.includes('virtual') || sessionFormats.includes('telehealth') || sessionFormats.includes('online'),
       inPersonAvailable: sessionFormats.length === 0 || sessionFormats.includes('inperson') || sessionFormats.includes('in-person') || sessionFormats.includes('office'),
       hourlyRateMin: typeof profile.hourlyRateMin === 'number' ? profile.hourlyRateMin : null,

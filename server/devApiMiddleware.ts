@@ -14,7 +14,7 @@ import {
 } from './backendStore';
 import { buildMatchGenerationResponse, generateMatches, MatchGenerationRequest, resolveMatchPreferences } from './matchingEngine';
 import { fetchPsychologyTodayDirectoryProfiles, fetchPsychologyTodayProfile, normalizePsychologyTodayProfile, PsychologyTodayProfilePayload } from './psychologyTodayProfile';
-import { generatePlaceholderTmtiProfile, TmtiResponseInput } from './tmtiAdapter';
+import { generateCnipConversationProfile, TmtiResponseInput } from './tmtiAdapter';
 
 type JsonPayload = Record<string, unknown>;
 
@@ -108,10 +108,9 @@ function validateUserPayload(body: Record<string, unknown>) {
 
 function validatePreferencePayload(body: Record<string, unknown>) {
   const errors = [];
-  const therapyTypes = Array.isArray(body.therapyTypes) ? body.therapyTypes : Array.isArray(body.lifeAspects) ? body.lifeAspects : [];
 
-  if (typeof body.areaCode !== 'string' || !/^\d{5}$/.test(body.areaCode.trim())) {
-    errors.push(validationError('areaCode', 'areaCode must be a 5-digit U.S. ZIP code.'));
+  if (typeof body.areaCode === 'string' && body.areaCode.trim().length > 0 && !/^\d{5}$/.test(body.areaCode.trim())) {
+    errors.push(validationError('areaCode', 'areaCode must be a 5-digit U.S. ZIP code when provided.'));
   }
 
   return errors;
@@ -167,6 +166,10 @@ function mergeScrapedProfileWithRequest(
       ...(profileOverrides.expertise ?? []),
       ...(profileOverrides.therapyTypes ?? []),
     ],
+    therapyModels: [
+      ...(scrapedProfile.therapyModels ?? []),
+      ...(profileOverrides.therapyModels ?? []),
+    ],
     insuranceProviders: [
       ...(scrapedProfile.insuranceProviders ?? []),
       ...(searchFilters?.insuranceProvider ? [searchFilters.insuranceProvider] : []),
@@ -202,6 +205,7 @@ function mergeScrapedProfileWithPreferences(
       ...(scrapedProfile.therapyTypes ?? []),
       ...preferences.therapyTypes,
     ],
+    therapyModels: scrapedProfile.therapyModels ?? [],
     insuranceProviders: [
       ...(scrapedProfile.insuranceProviders ?? []),
       ...(preferences.insuranceProvider ? [preferences.insuranceProvider] : []),
@@ -658,7 +662,7 @@ export function createDevApiMiddleware() {
           return;
         }
 
-        const profileResult = generatePlaceholderTmtiProfile(responses);
+        const profileResult = generateCnipConversationProfile(responses);
         const result = saveTmtiProfileWithResponses({
           userId,
           tmtiType: profileResult.tmtiType,
@@ -714,7 +718,7 @@ export function createDevApiMiddleware() {
       try {
         const body = await readJsonBody(request);
         const responses = getTmtiResponses(body);
-        const generatedProfile = generatePlaceholderTmtiProfile(responses);
+        const generatedProfile = generateCnipConversationProfile(responses);
         const result = saveTmtiProfileWithResponses({
           userId,
           tmtiType: typeof body.tmtiType === 'string' ? body.tmtiType : generatedProfile.tmtiType,

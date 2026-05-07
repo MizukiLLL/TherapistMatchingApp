@@ -121,6 +121,7 @@ type MatchGenerationResponse = {
       areaCodesServed: string[];
       languages: string[];
       therapyTypes: string[];
+      therapyModels: string[];
       telehealthAvailable: boolean;
       inPersonAvailable: boolean;
       hourlyRateMin: number | null;
@@ -131,17 +132,20 @@ type MatchGenerationResponse = {
     };
     hard_constraint_reasons: string[];
     preference_score: number;
-    tmti_score: number;
+    cnip_score: number;
+    therapy_model_score: number;
     final_score: number;
     explanation: {
       tokens: string[];
       matchedTherapyTypes: string[];
+      matchedTherapyModels: string[];
       matchingInsurance: Array<{ provider: string; plan: string | null; acceptingNewPatients: boolean }>;
       scoreBreakdown: {
         expertise: number;
+        therapyModel: number;
         language: number;
         sessionFormat: number;
-        tmti: number;
+        cnipStyle: number;
       };
     };
   }>;
@@ -196,12 +200,12 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       hourlyRateMin: match.therapist.hourlyRateMin,
       hourlyRateMax: match.therapist.hourlyRateMax,
       expertise: match.therapist.therapyTypes,
-      therapyModels: match.explanation.matchedTherapyTypes.slice(0, 3),
+      therapyModels: match.explanation.matchedTherapyModels.length > 0 ? match.explanation.matchedTherapyModels : match.therapist.therapyModels.slice(0, 3),
       conversationStyleProfile: data.cnipPreferenceProfile,
       bio: match.therapist.bio,
     },
     score: match.final_score,
-    styleFit: match.tmti_score,
+    styleFit: match.cnip_score,
     expertiseFit: match.explanation.scoreBreakdown.expertise,
     logisticsFit: Math.round((match.explanation.scoreBreakdown.language + match.explanation.scoreBreakdown.sessionFormat) / 2),
     reasons: [...match.hard_constraint_reasons, ...match.explanation.tokens],

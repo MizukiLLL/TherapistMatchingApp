@@ -54,7 +54,7 @@ Read persisted records with:
 `GET /users/demo-user/onboarding`
 `GET /users/demo-user/tmti-profile`
 
-Persist raw TMTI answers and generate a placeholder profile with:
+Persist raw conversation-style answers and generate a C-NIP conversation profile with:
 
 `POST /users/demo-user/tmti-responses`
 
@@ -67,7 +67,7 @@ Persist raw TMTI answers and generate a placeholder profile with:
 }
 ```
 
-Persist explicit C-NIP/TMTI profile scoring with `POST /users/demo-user/tmti-profile`.
+Persist explicit C-NIP conversation-style scoring with `POST /users/demo-user/tmti-profile`.
 
 Turn a scraper-ready PsychologyToday profile into an immediate live result with:
 

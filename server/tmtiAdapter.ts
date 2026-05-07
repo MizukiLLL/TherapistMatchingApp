@@ -12,7 +12,7 @@ export type TmtiProfileResult = {
 
 type Dimension = 'directiveness' | 'emotionalIntensity' | 'pastOrientation' | 'warmSupport';
 
-const VERSION = 'placeholder-v1';
+const VERSION = 'c-nip-v1';
 const dimensions: Dimension[] = ['directiveness', 'emotionalIntensity', 'pastOrientation', 'warmSupport'];
 
 function normalize(value: string): string {
@@ -50,7 +50,7 @@ function average(values: number[]): number {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
-export function generatePlaceholderTmtiProfile(responses: TmtiResponseInput[]): TmtiProfileResult {
+export function generateCnipConversationProfile(responses: TmtiResponseInput[]): TmtiProfileResult {
   const scoresByDimension = dimensions.reduce<Record<Dimension, number[]>>(
     (scores, dimension) => ({ ...scores, [dimension]: [] }),
     { directiveness: [], emotionalIntensity: [], pastOrientation: [], warmSupport: [] }

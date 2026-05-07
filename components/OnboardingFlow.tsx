@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, Loader2, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Loader2, Save, Send, Sparkles } from 'lucide-react';
 import { generateTherapistMatches, loadOnboardingState, saveOnboardingState } from '../onboardingApi';
 import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
 import { buildCnipPreferenceProfile, cnipStyleNames } from '../utils/therapistRecommendations';
@@ -74,6 +74,43 @@ const carePreferenceOptions: Option<Exclude<OnboardingFormData['carePreference']
   { id: 'InPerson', label: { en: 'In person', 'zh-CN': '当面聊', 'zh-HK': '見面傾' } },
   { id: 'Virtual', label: { en: 'Online', 'zh-CN': '网上聊', 'zh-HK': '網上傾' } },
   { id: 'Either', label: { en: 'Either is fine', 'zh-CN': '都可以', 'zh-HK': '都可以' } },
+];
+
+const commonInsuranceProviders = [
+  'Kaiser Permanente',
+  'Blue Shield of California',
+  'Anthem Blue Cross',
+  'Health Net',
+  'Molina Healthcare',
+  'LA Care Health Plan',
+  'Sharp Health Plan',
+  'Valley Health Plan',
+  'Western Health Advantage',
+  'Inland Empire Health Plan',
+  'Balance by CCHP',
+  'Aetna',
+  'Cigna',
+  'UnitedHealthcare',
+  'Optum',
+  'Medi-Cal',
+  'Medicare',
+];
+
+const commonInsurancePlans = [
+  'HMO',
+  'PPO',
+  'EPO',
+  'POS',
+  'Bronze 60',
+  'Silver 70',
+  'Enhanced Silver 73',
+  'Enhanced Silver 87',
+  'Enhanced Silver 94',
+  'Gold 80',
+  'Platinum 90',
+  'Minimum Coverage',
+  'Medi-Cal',
+  'Medicare Advantage',
 ];
 
 const lifeAspectOptions: Record<LifeAspectCategory, Option[]> = {
@@ -192,8 +229,9 @@ const copyByLocale = {
     back: 'Back',
     continue: 'Continue',
     save: 'Save answers',
+    saveDraft: 'Save draft',
     saving: 'Saving...',
-    savedSuccess: 'Saved. You can move on to matching.',
+    savedSuccess: 'Saved. Your answers are stored on this device and in the local database when available.',
     savedAtLabel: 'Last saved',
     requiredHint: 'Pick at least one option, type a note, or use "No, next" to continue.',
     questionLanguage: 'What language would you like to use?',
@@ -210,9 +248,11 @@ const copyByLocale = {
     moreToAddLabel: 'Anything else?',
     moreToAddPlaceholder: 'Write a short note...',
     insuranceProviderLabel: 'Insurance provider',
-    insuranceProviderPlaceholder: 'Aetna, Cigna, Blue Shield...',
+    insuranceProviderPlaceholder: 'Kaiser, Blue Shield, Aetna, Medi-Cal...',
     insurancePlanLabel: 'Plan, optional',
-    insurancePlanPlaceholder: 'PPO, Open Choice...',
+    insurancePlanPlaceholder: 'PPO, HMO, Silver 70...',
+    insuranceQuickPickLabel: 'Common California options',
+    insurancePlanQuickPickLabel: 'Common plan types',
     insuranceHint: 'Insurance helps us rank coverage, but we will still show the best available matches if you skip it.',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
@@ -247,6 +287,7 @@ const copyByLocale = {
     back: '返回',
     continue: '继续',
     save: '保存回答',
+    saveDraft: '保存草稿',
     saving: '保存中...',
     savedSuccess: '已保存。接下来可以进入匹配。',
     savedAtLabel: '上次保存',
@@ -297,6 +338,7 @@ const copyByLocale = {
     back: '返回',
     continue: '繼續',
     save: '儲存回答',
+    saveDraft: '儲存草稿',
     saving: '儲存中...',
     savedSuccess: '已儲存。下一步可以開始配對。',
     savedAtLabel: '上次儲存',
@@ -710,6 +752,19 @@ export function OnboardingFlow() {
     }
   };
 
+  const handleSaveDraft = async () => {
+    setStatus('saving');
+    setErrorMessage('');
+    try {
+      const saved = await saveOnboardingState(formData);
+      setSavedAt(saved.updatedAt);
+      setStatus('saved');
+    } catch {
+      setStatus('error');
+      setErrorMessage(copy.submitError);
+    }
+  };
+
   const handleIntroStart = () => {
     if (introStage !== 'cover') return;
     setIntroStage('lit');
@@ -792,22 +847,76 @@ export function OnboardingFlow() {
                 <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insuranceProviderLabel ?? copyByLocale.en.insuranceProviderLabel}</span>
                 <input
                   type="text"
+                  list="insurance-provider-options"
                   value={formData.insuranceProvider}
                   onChange={(event) => setFormData((prev) => ({ ...prev, insuranceProvider: event.target.value }))}
                   placeholder={copy.insuranceProviderPlaceholder ?? copyByLocale.en.insuranceProviderPlaceholder}
                   className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
                 />
+                <datalist id="insurance-provider-options">
+                  {commonInsuranceProviders.map((provider) => (
+                    <option key={provider} value={provider} />
+                  ))}
+                </datalist>
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insurancePlanLabel ?? copyByLocale.en.insurancePlanLabel}</span>
                 <input
                   type="text"
+                  list="insurance-plan-options"
                   value={formData.insurancePlan}
                   onChange={(event) => setFormData((prev) => ({ ...prev, insurancePlan: event.target.value }))}
                   placeholder={copy.insurancePlanPlaceholder ?? copyByLocale.en.insurancePlanPlaceholder}
                   className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
                 />
+                <datalist id="insurance-plan-options">
+                  {commonInsurancePlans.map((plan) => (
+                    <option key={plan} value={plan} />
+                  ))}
+                </datalist>
               </label>
+              <div className="space-y-3 sm:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">
+                  {copy.insuranceQuickPickLabel ?? copyByLocale.en.insuranceQuickPickLabel}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {commonInsuranceProviders.map((provider) => {
+                    const selected = formData.insuranceProvider === provider;
+                    return (
+                      <button
+                        key={provider}
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, insuranceProvider: provider }))}
+                        className={chipClass(selected)}
+                      >
+                        {provider}
+                        {selected && <Check className="h-4 w-4" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-3 sm:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">
+                  {copy.insurancePlanQuickPickLabel ?? copyByLocale.en.insurancePlanQuickPickLabel}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {commonInsurancePlans.map((plan) => {
+                    const selected = formData.insurancePlan === plan;
+                    return (
+                      <button
+                        key={plan}
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, insurancePlan: plan }))}
+                        className={chipClass(selected)}
+                      >
+                        {plan}
+                        {selected && <Check className="h-4 w-4" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <p className="text-sm font-medium text-[#746c62] sm:col-span-2">{copy.insuranceHint ?? copyByLocale.en.insuranceHint}</p>
             </div>
           )}
@@ -1276,27 +1385,39 @@ export function OnboardingFlow() {
                   {copy.back}
                 </button>
 
-                {step < 8 ? (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <button
                     type="button"
-                    onClick={goNext}
-                    disabled={!currentStepValid || status === 'saving'}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6e7b64] px-6 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#607057] disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={handleSaveDraft}
+                    disabled={status === 'saving'}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#40382f] transition hover:border-[#7a866f] hover:bg-[#f1ede3] disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {copy.continue}
-                    <ArrowRight className="h-4 w-4" />
+                    {status === 'saving' ? copy.saving : copy.saveDraft ?? copyByLocale.en.saveDraft}
+                    {status === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={!currentStepValid || status === 'saving'}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6e7b64] px-6 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#607057] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {status === 'saving' ? copy.saving : copy.save}
-                    {status === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  </button>
-                )}
+
+                  {step < 8 ? (
+                    <button
+                      type="button"
+                      onClick={goNext}
+                      disabled={!currentStepValid || status === 'saving'}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6e7b64] px-6 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#607057] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {copy.continue}
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={!currentStepValid || status === 'saving'}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6e7b64] px-6 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#607057] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {status === 'saving' ? copy.saving : copy.save}
+                      {status === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {savedAt && (
