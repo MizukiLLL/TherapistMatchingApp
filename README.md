@@ -15,6 +15,44 @@ View your app in AI Studio: https://ai.studio/apps/temp/1
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Run the app:
    `npm run dev`
+
+## Local API
+
+The dev server persists local backend state to `server/data/therapist-matcher-db.json`.
+That JSON file is ignored by git so local users, preferences, and generated matches do not get committed.
+
+The dev server includes `GET /therapists` for therapist directory search:
+
+`/therapists?areaCode=10001&therapyType=Anxiety&insuranceProvider=Aetna&insurancePlan=PPO`
+
+Required filters are `areaCode`, `therapyType`, and `insuranceProvider` (or `insurance`). `insurancePlan` is optional.
+
+Generate and persist ranked matches with:
+
+`POST /matches/generate`
+
+```json
+{
+  "userId": "demo-user",
+  "areaCode": "10001",
+  "therapyTypes": ["Anxiety", "Relationship conflict"],
+  "insuranceProvider": "Aetna",
+  "insurancePlan": "PPO",
+  "preferredLanguage": "Mandarin",
+  "carePreference": "Virtual"
+}
+```
+
+Read the latest persisted matches for a user with `GET /users/demo-user/matches`.
+
+Read persisted records with:
+
+`GET /users/demo-user`
+`GET /users/demo-user/preferences`
+`GET /users/demo-user/onboarding`
+`GET /users/demo-user/tmti-profile`
+
+Persist C-NIP/TMTI profile scoring with `POST /users/demo-user/tmti-profile`.
+Add a live therapist record to the local database with `POST /therapists`; searches and generated matches use seeded therapists plus any live therapist records.

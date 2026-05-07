@@ -75,7 +75,7 @@ export const samplePsychologyTodayTherapists: PsychologyTodayTherapistProfile[] 
     profileUrl: 'https://www.psychologytoday.com/us/therapists/maya-chen-new-york-ny',
     sessionFormats: ['Virtual', 'InPerson'],
     insuranceProviders: ['Aetna', 'Cigna', 'UnitedHealthcare'],
-    expertise: ['Anxiety', 'Relationship conflict', 'Family boundaries', 'Communication skills', 'Career change'],
+    expertise: ['Anxiety', 'Relationship conflict', 'Family boundaries', 'Communication skills', 'Career change', 'Workplace conflict', 'People-pleasing'],
     therapyModels: ['Emotionally Focused Therapy', 'CBT', 'Family Systems'],
     conversationStyleProfile: {
       directiveness: 6,
@@ -94,7 +94,7 @@ export const samplePsychologyTodayTherapists: PsychologyTodayTherapistProfile[] 
     profileUrl: 'https://www.psychologytoday.com/us/therapists/jonathan-reed-new-york-ny',
     sessionFormats: ['Virtual'],
     insuranceProviders: ['Aetna', 'Oscar', 'Oxford'],
-    expertise: ['Depression', 'Career change', 'College / school stress', 'Sleep problems', 'Self-esteem'],
+    expertise: ['Depression', 'Career change', 'College / school stress', 'Sleep problems', 'Self-esteem', 'Stress and burnout', 'ADHD or focus concerns', 'Job loss', 'Substance use concerns'],
     therapyModels: ['CBT', 'Solution-Focused Therapy', 'Behavioral Activation'],
     conversationStyleProfile: {
       directiveness: 9,
@@ -113,7 +113,7 @@ export const samplePsychologyTodayTherapists: PsychologyTodayTherapistProfile[] 
     profileUrl: 'https://www.psychologytoday.com/us/therapists/sofia-morales-los-angeles-ca',
     sessionFormats: ['Virtual', 'InPerson'],
     insuranceProviders: ['Blue Shield', 'Cigna', 'Kaiser'],
-    expertise: ['Trauma / PTSD', 'Panic attacks', 'Identity exploration', 'Loneliness', 'Relocation'],
+    expertise: ['Trauma / PTSD', 'Panic attacks', 'Identity exploration', 'Loneliness', 'Relocation', 'Grief and loss', 'Immigration or acculturation', 'Cultural identity', 'Social anxiety'],
     therapyModels: ['EMDR', 'Psychodynamic Therapy', 'Somatic Therapy'],
     conversationStyleProfile: {
       directiveness: 4,
@@ -132,7 +132,7 @@ export const samplePsychologyTodayTherapists: PsychologyTodayTherapistProfile[] 
     profileUrl: 'https://www.psychologytoday.com/us/therapists/emily-wong-san-francisco-ca',
     sessionFormats: ['Virtual'],
     insuranceProviders: ['Aetna', 'Blue Shield', 'UnitedHealthcare'],
-    expertise: ['Anxiety', 'OCD tendencies', 'Body image concerns', 'Medication concerns', 'Chronic pain'],
+    expertise: ['Anxiety', 'OCD tendencies', 'Body image concerns', 'Medication concerns', 'Chronic pain', 'Eating concerns', 'Appetite changes', 'Fatigue or low energy', 'Sexual health concerns', 'Disability adjustment', 'Serious diagnosis'],
     therapyModels: ['ACT', 'CBT', 'Mindfulness-Based Therapy'],
     conversationStyleProfile: {
       directiveness: 7,
@@ -151,7 +151,7 @@ export const samplePsychologyTodayTherapists: PsychologyTodayTherapistProfile[] 
     profileUrl: 'https://www.psychologytoday.com/us/therapists/david-kim-seattle-wa',
     sessionFormats: ['InPerson', 'Virtual'],
     insuranceProviders: ['Premera', 'Regence', 'Cigna'],
-    expertise: ['Parenthood', 'Family boundaries', 'Relationship conflict', 'Self-esteem', 'Communication skills'],
+    expertise: ['Parenthood', 'Family boundaries', 'Relationship conflict', 'Self-esteem', 'Communication skills', 'Caregiving stress', 'Aging parents', 'Marriage or commitment', 'Dating stress', 'Pregnancy or postpartum health', 'Fertility or family planning'],
     therapyModels: ['Internal Family Systems', 'Gottman Method', 'Narrative Therapy'],
     conversationStyleProfile: {
       directiveness: 5,

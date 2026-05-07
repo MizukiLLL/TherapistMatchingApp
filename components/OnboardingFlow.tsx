@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, ExternalLink, HeartHandshake, Loader2, Send, Sparkles } from 'lucide-react';
-import { loadOnboardingState, saveOnboardingState } from '../onboardingApi';
+import { generateTherapistMatches, loadOnboardingState, saveOnboardingState } from '../onboardingApi';
 import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
-import { buildCnipPreferenceProfile, cnipStyleNames, recommendTherapists } from '../utils/therapistRecommendations';
+import { buildCnipPreferenceProfile, cnipStyleNames } from '../utils/therapistRecommendations';
+import type { TherapistRecommendation } from '../utils/therapistRecommendations';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 type Locale = 'zh-CN' | 'zh-HK' | 'en';
@@ -13,7 +14,7 @@ type CnipStyleOption = {
   id: CnipConversationStyle;
   name: string;
   role: string;
-  prompt: string;
+  sampleResponse: (concerns: string) => string;
   traits: string[];
 };
 
@@ -109,33 +110,75 @@ const lifeAspectOptions: Record<LifeAspectCategory, Option[]> = {
   ],
 };
 
+const additionalLifeAspectOptions: Record<LifeAspectCategory, Option[]> = {
+  symptomsAndDiagnoses: [
+    { id: 'Stress and burnout', label: { en: 'Stress or burnout', 'zh-CN': 'Stress or burnout', 'zh-HK': 'Stress or burnout' } },
+    { id: 'Grief and loss', label: { en: 'Grief or loss', 'zh-CN': 'Grief or loss', 'zh-HK': 'Grief or loss' } },
+    { id: 'Anger or irritability', label: { en: 'Anger or irritability', 'zh-CN': 'Anger or irritability', 'zh-HK': 'Anger or irritability' } },
+    { id: 'ADHD or focus concerns', label: { en: 'Focus or ADHD concerns', 'zh-CN': 'Focus or ADHD concerns', 'zh-HK': 'Focus or ADHD concerns' } },
+    { id: 'Eating concerns', label: { en: 'Eating concerns', 'zh-CN': 'Eating concerns', 'zh-HK': 'Eating concerns' } },
+    { id: 'Substance use concerns', label: { en: 'Substance use concerns', 'zh-CN': 'Substance use concerns', 'zh-HK': 'Substance use concerns' } },
+  ],
+  lifeStagesAndTransitions: [
+    { id: 'Immigration or acculturation', label: { en: 'Immigration or culture adjustment', 'zh-CN': 'Immigration or culture adjustment', 'zh-HK': 'Immigration or culture adjustment' } },
+    { id: 'Job loss', label: { en: 'Job loss', 'zh-CN': 'Job loss', 'zh-HK': 'Job loss' } },
+    { id: 'Caregiving stress', label: { en: 'Caregiving stress', 'zh-CN': 'Caregiving stress', 'zh-HK': 'Caregiving stress' } },
+    { id: 'Marriage or commitment', label: { en: 'Marriage or commitment changes', 'zh-CN': 'Marriage or commitment changes', 'zh-HK': 'Marriage or commitment changes' } },
+    { id: 'Fertility or family planning', label: { en: 'Fertility or family planning', 'zh-CN': 'Fertility or family planning', 'zh-HK': 'Fertility or family planning' } },
+    { id: 'Aging parents', label: { en: 'Aging parents', 'zh-CN': 'Aging parents', 'zh-HK': 'Aging parents' } },
+  ],
+  physicalHealthRelatedIssues: [
+    { id: 'Fatigue or low energy', label: { en: 'Fatigue or low energy', 'zh-CN': 'Fatigue or low energy', 'zh-HK': 'Fatigue or low energy' } },
+    { id: 'Pregnancy or postpartum health', label: { en: 'Pregnancy or postpartum health', 'zh-CN': 'Pregnancy or postpartum health', 'zh-HK': 'Pregnancy or postpartum health' } },
+    { id: 'Disability adjustment', label: { en: 'Disability adjustment', 'zh-CN': 'Disability adjustment', 'zh-HK': 'Disability adjustment' } },
+    { id: 'Serious diagnosis', label: { en: 'A serious diagnosis', 'zh-CN': 'A serious diagnosis', 'zh-HK': 'A serious diagnosis' } },
+    { id: 'Appetite changes', label: { en: 'Appetite changes', 'zh-CN': 'Appetite changes', 'zh-HK': 'Appetite changes' } },
+    { id: 'Sexual health concerns', label: { en: 'Sexual health concerns', 'zh-CN': 'Sexual health concerns', 'zh-HK': 'Sexual health concerns' } },
+  ],
+  selfIdentityAndSocialRelationships: [
+    { id: 'Social anxiety', label: { en: 'Social anxiety', 'zh-CN': 'Social anxiety', 'zh-HK': 'Social anxiety' } },
+    { id: 'Cultural identity', label: { en: 'Cultural identity', 'zh-CN': 'Cultural identity', 'zh-HK': 'Cultural identity' } },
+    { id: 'Dating stress', label: { en: 'Dating stress', 'zh-CN': 'Dating stress', 'zh-HK': 'Dating stress' } },
+    { id: 'Workplace conflict', label: { en: 'Workplace conflict', 'zh-CN': 'Workplace conflict', 'zh-HK': 'Workplace conflict' } },
+    { id: 'LGBTQ+ identity', label: { en: 'LGBTQ+ identity', 'zh-CN': 'LGBTQ+ identity', 'zh-HK': 'LGBTQ+ identity' } },
+    { id: 'People-pleasing', label: { en: 'People-pleasing', 'zh-CN': 'People-pleasing', 'zh-HK': 'People-pleasing' } },
+  ],
+};
+
+const expandedLifeAspectOptions: Record<LifeAspectCategory, Option[]> = {
+  symptomsAndDiagnoses: [...lifeAspectOptions.symptomsAndDiagnoses, ...additionalLifeAspectOptions.symptomsAndDiagnoses],
+  lifeStagesAndTransitions: [...lifeAspectOptions.lifeStagesAndTransitions, ...additionalLifeAspectOptions.lifeStagesAndTransitions],
+  physicalHealthRelatedIssues: [...lifeAspectOptions.physicalHealthRelatedIssues, ...additionalLifeAspectOptions.physicalHealthRelatedIssues],
+  selfIdentityAndSocialRelationships: [...lifeAspectOptions.selfIdentityAndSocialRelationships, ...additionalLifeAspectOptions.selfIdentityAndSocialRelationships],
+};
+
 const cnipStyleOptions: CnipStyleOption[] = [
   {
     id: 'structuredGuide',
     name: 'Structured guide',
     role: 'Keeps the session organized',
-    prompt: 'I will help name the pattern, set a goal, and suggest the next step.',
+    sampleResponse: (concerns) => `We can start by mapping when ${concerns} shows up, choose one target for the first session, and leave with a clear next step.`,
     traits: ['directive', 'present-focused', 'clear plan'],
   },
   {
     id: 'reflectiveCompanion',
     name: 'Reflective companion',
     role: 'Moves at your pace',
-    prompt: 'I will listen closely, reflect what I hear, and make room for nuance.',
+    sampleResponse: (concerns) => `I would slow down with you around ${concerns}, reflect what feels most tender, and let the pace come from what feels safe to say.`,
     traits: ['client-led', 'warm support', 'steady pace'],
   },
   {
     id: 'deepExplorer',
     name: 'Deep explorer',
     role: 'Connects past and present',
-    prompt: 'I will help explore older experiences and the emotions underneath.',
+    sampleResponse: (concerns) => `I would be curious about how ${concerns} connects to earlier patterns, important relationships, and emotions that may not have had enough room.`,
     traits: ['depth work', 'emotion-focused', 'past-oriented'],
   },
   {
     id: 'practicalCoach',
     name: 'Practical coach',
     role: 'Turns insight into action',
-    prompt: 'I will challenge gently, practice tools, and keep momentum between sessions.',
+    sampleResponse: (concerns) => `For ${concerns}, I would help you test a small skill this week, notice what works, and adjust the plan together next time.`,
     traits: ['skills-based', 'focused challenge', 'home practice'],
   },
 ];
@@ -165,6 +208,11 @@ const copyByLocale = {
     areaCodeHint: 'Please enter a 5-digit U.S. ZIP code.',
     moreToAddLabel: 'Anything else?',
     moreToAddPlaceholder: 'Write a short note...',
+    insuranceProviderLabel: 'Insurance provider',
+    insuranceProviderPlaceholder: 'Aetna, Cigna, Blue Shield...',
+    insurancePlanLabel: 'Plan, optional',
+    insurancePlanPlaceholder: 'PPO, Open Choice...',
+    insuranceHint: 'Insurance is required for backend matching in this prototype.',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
     recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
@@ -283,6 +331,29 @@ const chipClass = (selected: boolean) =>
       : 'border-[#d2c7b4] bg-[#fbf7ef] text-[#40382f] hover:border-[#7a866f] hover:bg-[#f1ede3]',
   ].join(' ');
 
+const therapistBubbleThemes = [
+  {
+    bubble: 'bg-[#e7efe4] text-[#31412f]',
+    tag: 'bg-[#6e7b64] text-[#f9f5ec]',
+    meta: 'text-[#5e6d59]',
+  },
+  {
+    bubble: 'bg-[#efe3d6] text-[#4a3529]',
+    tag: 'bg-[#9a7458] text-[#fff8f1]',
+    meta: 'text-[#7a5d49]',
+  },
+  {
+    bubble: 'bg-[#e4e8f0] text-[#2f3a4d]',
+    tag: 'bg-[#63748f] text-[#f8fbff]',
+    meta: 'text-[#55657d]',
+  },
+  {
+    bubble: 'bg-[#ece3ee] text-[#46364e]',
+    tag: 'bg-[#82658a] text-[#fcf8ff]',
+    meta: 'text-[#6d5874]',
+  },
+] as const;
+
 export function OnboardingFlow() {
   const [step, setStep] = useState<Step>(0);
   const [formData, setFormData] = useState<OnboardingFormData>(EMPTY_FORM);
@@ -291,11 +362,20 @@ export function OnboardingFlow() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [typedQuestion, setTypedQuestion] = useState('');
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [recommendations, setRecommendations] = useState<TherapistRecommendation[]>([]);
 
   const locale = getLocaleFromPreferredLanguage(formData.preferredLanguage);
   const copy = copyByLocale[locale];
   const progress = ((step + 1) / TOTAL_STEPS) * 100;
-  const recommendations = useMemo(() => recommendTherapists(formData), [formData]);
+  const selectedConcernLabels = useMemo(
+    () =>
+      (Object.keys(formData.lifeAspectsByCategory) as LifeAspectCategory[]).flatMap((category) =>
+        formData.lifeAspectsByCategory[category].map((id) => getOptionLabel(expandedLifeAspectOptions[category], id, locale))
+      ),
+    [formData.lifeAspectsByCategory, locale]
+  );
+  const selectedConcernSample = selectedConcernLabels.length > 0 ? selectedConcernLabels.slice(0, 3).join(', ') : 'what has been feeling hardest lately';
+  const cnipSampleQuestion = `I want help with ${selectedConcernSample}. How would you work with me?`;
 
   const questions = useMemo(
     () => [
@@ -357,7 +437,7 @@ export function OnboardingFlow() {
     if (step === 0) return true;
     if (step === 1) return /^\d{5}$/.test(formData.areaCode.trim());
     if (step === 2) return formData.therapyFor !== '';
-    if (step === 3) return formData.carePreference !== '';
+    if (step === 3) return formData.carePreference !== '' && formData.insuranceProvider.trim().length > 0;
     if (step >= 4 && step <= 7) {
       const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 4 | 5 | 6 | 7];
       return (
@@ -374,11 +454,17 @@ export function OnboardingFlow() {
     if (targetStep === 0) return copy.languageOptions[formData.preferredLanguage];
     if (targetStep === 1) return formData.areaCode;
     if (targetStep === 2 && formData.therapyFor) return getOptionLabel(therapyForOptions, formData.therapyFor, locale);
-    if (targetStep === 3 && formData.carePreference) return getOptionLabel(carePreferenceOptions, formData.carePreference, locale);
+    if (targetStep === 3 && formData.carePreference) {
+      const insurance = formData.insuranceProvider.trim();
+      const plan = formData.insurancePlan.trim();
+      return [getOptionLabel(carePreferenceOptions, formData.carePreference, locale), insurance && `Insurance: ${insurance}${plan ? ` ${plan}` : ''}`]
+        .filter(Boolean)
+        .join(' / ');
+    }
     if (targetStep >= 4 && targetStep <= 7) {
       const category = LIFE_ASPECT_CATEGORY_BY_STEP[targetStep as 4 | 5 | 6 | 7];
       if (formData.lifeAspectSkippedByCategory[category]) return copy.skippedReply;
-      const labels = formData.lifeAspectsByCategory[category].map((id) => getOptionLabel(lifeAspectOptions[category], id, locale));
+      const labels = formData.lifeAspectsByCategory[category].map((id) => getOptionLabel(expandedLifeAspectOptions[category], id, locale));
       const note = formData.lifeAspectNotesByCategory[category].trim();
       if (labels.length && note) return `${labels.join(', ')} / ${note}`;
       if (labels.length) return labels.join(', ');
@@ -457,6 +543,8 @@ export function OnboardingFlow() {
     setErrorMessage('');
     try {
       const saved = await saveOnboardingState(formData);
+      const generatedRecommendations = await generateTherapistMatches(formData, saved.userId);
+      setRecommendations(generatedRecommendations);
       setSavedAt(saved.updatedAt);
       setStatus('saved');
       setShowRecommendations(true);
@@ -513,80 +601,125 @@ export function OnboardingFlow() {
     const simpleOptions = step === 2 ? therapyForOptions : step === 3 ? carePreferenceOptions : null;
     if (simpleOptions) {
       return (
-        <div className="flex flex-wrap gap-3">
-          {simpleOptions.map((option) => {
-            const selected = step === 2 ? formData.therapyFor === option.id : formData.carePreference === option.id;
-            return (
-              <button
-                type="button"
-                key={option.id}
-                onClick={() =>
-                  setFormData((prev) =>
-                    step === 2
-                      ? { ...prev, therapyFor: option.id as OnboardingFormData['therapyFor'] }
-                      : { ...prev, carePreference: option.id as OnboardingFormData['carePreference'] }
-                  )
-                }
-                className={chipClass(selected)}
-              >
-                {option.label[locale]}
-                {selected && <Check className="h-4 w-4" />}
-              </button>
-            );
-          })}
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-3">
+            {simpleOptions.map((option) => {
+              const selected = step === 2 ? formData.therapyFor === option.id : formData.carePreference === option.id;
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() =>
+                    setFormData((prev) =>
+                      step === 2
+                        ? { ...prev, therapyFor: option.id as OnboardingFormData['therapyFor'] }
+                        : { ...prev, carePreference: option.id as OnboardingFormData['carePreference'] }
+                    )
+                  }
+                  className={chipClass(selected)}
+                >
+                  {option.label[locale]}
+                  {selected && <Check className="h-4 w-4" />}
+                </button>
+              );
+            })}
+          </div>
+          {step === 3 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insuranceProviderLabel ?? copyByLocale.en.insuranceProviderLabel}</span>
+                <input
+                  type="text"
+                  value={formData.insuranceProvider}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, insuranceProvider: event.target.value }))}
+                  placeholder={copy.insuranceProviderPlaceholder ?? copyByLocale.en.insuranceProviderPlaceholder}
+                  className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insurancePlanLabel ?? copyByLocale.en.insurancePlanLabel}</span>
+                <input
+                  type="text"
+                  value={formData.insurancePlan}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, insurancePlan: event.target.value }))}
+                  placeholder={copy.insurancePlanPlaceholder ?? copyByLocale.en.insurancePlanPlaceholder}
+                  className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
+                />
+              </label>
+              <p className="text-sm font-medium text-[#746c62] sm:col-span-2">{copy.insuranceHint ?? copyByLocale.en.insuranceHint}</p>
+            </div>
+          )}
         </div>
       );
     }
 
     if (step === 8) {
+      const virtualTherapistStyles = cnipStyleOptions.slice(0, 4);
+      const previewLines = [
+        `I felt ${selectedConcernSample}.`,
+        ...Object.values(formData.lifeAspectNotesByCategory)
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(0, 1),
+      ];
+
       return (
         <div className="space-y-4">
           <p className="text-sm font-medium text-[#746c62]">{copy.styleHint}</p>
-          <div className="grid gap-3 md:grid-cols-2">
-            {cnipStyleOptions.map((style, index) => {
-              const selected = formData.cnipConversationStyles.includes(style.id);
-              return (
-                <button
-                  type="button"
-                  key={style.id}
-                  onClick={() => toggleCnipStyle(style.id)}
-                  className={[
-                    'group min-h-[220px] rounded-[24px] border p-4 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
-                    selected ? 'border-[#66725d] bg-[#fffdf8]' : 'border-[#d2c7b4] bg-[#fbf7ef] hover:border-[#7a866f]',
-                  ].join(' ')}
-                >
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#6e7b64] text-sm font-semibold text-[#f9f5ec]">
-                        T{index + 1}
-                      </div>
-                      <div>
-                        <p className="text-base font-semibold text-[#332d28]">{style.name}</p>
-                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-[#8b8479]">{style.role}</p>
+          <div className="rounded-[24px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+            <div className="rounded-[24px] bg-[#fffdf8] p-4 shadow-sm">
+              <div className="space-y-4">
+                {previewLines.map((line, index) => (
+                  <div key={`${line}-${index}`} className="flex justify-end">
+                    <div className="max-w-[82%]">
+                      <p className="mb-1 px-2 text-xs font-semibold text-[#5f6658]">You</p>
+                      <div className="rounded-[22px] rounded-tr-md bg-[#6e7b64] px-5 py-4 text-[15px] font-medium leading-7 text-[#f9f5ec] shadow-sm">
+                        {line}
                       </div>
                     </div>
-                    <span
+                  </div>
+                ))}
+
+                {virtualTherapistStyles.map((style, index) => {
+                  const selected = formData.cnipConversationStyles.includes(style.id);
+                  const theme = therapistBubbleThemes[index % therapistBubbleThemes.length];
+                  return (
+                    <button
+                      type="button"
+                      key={style.id}
+                      onClick={() => toggleCnipStyle(style.id)}
                       className={[
-                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition',
-                        selected ? 'border-[#66725d] bg-[#6e7b64] text-[#f9f5ec]' : 'border-[#d2c7b4] bg-[#f7f2e8] text-transparent',
+                        'flex w-full justify-start rounded-[24px] border border-transparent p-0 text-left transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
+                        selected ? 'ring-2 ring-[#6e7b64]/35' : 'hover:border-[#d8d0c2]',
                       ].join(' ')}
                     >
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                  </div>
-                  <div className="rounded-[20px] rounded-tl-md bg-white px-4 py-3 text-sm leading-6 text-[#40382f] shadow-sm">
-                    {style.prompt}
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {style.traits.map((trait) => (
-                      <span key={trait} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-medium text-[#62594f]">
-                        {trait}
-                      </span>
-                    ))}
-                  </div>
-                </button>
-              );
-            })}
+                      <div className="max-w-[88%]">
+                        <div className="mb-1 flex items-center gap-2 px-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{style.name}</p>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${theme.tag}`}>{style.role}</span>
+                          {selected && <Check className="h-4 w-4 text-[#6e7b64]" />}
+                        </div>
+                        <div
+                          className={[
+                            `rounded-[22px] rounded-tl-md px-5 py-4 text-[15px] leading-7 shadow-sm ${theme.bubble}`,
+                            selected ? 'outline outline-2 outline-offset-2 outline-[#6e7b64]' : '',
+                          ].join(' ')}
+                        >
+                          <p>{style.sampleResponse(selectedConcernSample)}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {style.traits.map((trait) => (
+                              <span key={trait} className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-current">
+                                {trait}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -596,7 +729,7 @@ export function OnboardingFlow() {
     return (
       <div className="w-full">
         <div className="flex flex-wrap gap-3">
-          {lifeAspectOptions[category].map((option) => {
+          {expandedLifeAspectOptions[category].map((option) => {
             const selected = formData.lifeAspectsByCategory[category].includes(option.id);
             return (
               <button type="button" key={option.id} onClick={() => toggleLifeAspect(category, option.id)} className={chipClass(selected)}>
@@ -661,9 +794,9 @@ export function OnboardingFlow() {
             </button>
           </header>
 
-          <section className="grid gap-4 py-6">
+          <section className="grid gap-4 pb-6">
             {recommendations.slice(0, 4).map((recommendation, index) => (
-              <article key={recommendation.therapist.id} className="rounded-[8px] border border-[#d8d0c2] bg-[#f7f2e8] p-5 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+              <article key={recommendation.therapist.id} className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
                 <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
                   <div>
                     <div className="flex flex-wrap items-start justify-between gap-3">
