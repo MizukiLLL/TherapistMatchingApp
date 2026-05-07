@@ -139,7 +139,7 @@ export function searchTherapists(filters: TherapistSearchFilters, directory = ge
     .slice(0, filters.limit);
 }
 
-export function buildTherapistSearchResponse(filters: TherapistSearchFilters, directory = therapistDirectory): TherapistSearchResponse {
+export function buildTherapistSearchResponse(filters: TherapistSearchFilters, directory = getAllTherapists()): TherapistSearchResponse {
   const startedAt = performance.now();
   const data = searchTherapists(filters, directory);
 

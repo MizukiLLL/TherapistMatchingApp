@@ -281,6 +281,19 @@ export function createDevApiMiddleware() {
 
       try {
         const body = await readJsonBody(request);
+        const errors = validateUserPayload(body);
+
+        if (errors.length > 0) {
+          sendJson(response, 400, {
+            error: {
+              code: 'INVALID_USER_PAYLOAD',
+              message: 'POST /users received invalid fields.',
+              details: errors,
+            },
+          });
+          return;
+        }
+
         const user = upsertUser({
           id: typeof body.id === 'string' ? body.id : undefined,
           email: typeof body.email === 'string' ? body.email : undefined,
@@ -345,6 +358,56 @@ export function createDevApiMiddleware() {
       return;
     }
 
+    if (userTmtiResponsesMatch) {
+      if (request.method !== 'POST') {
+        sendMethodNotAllowed(response, ['POST']);
+        return;
+      }
+
+      try {
+        const userId = decodeURIComponent(userTmtiResponsesMatch[1]);
+        const body = await readJsonBody(request);
+        const responses = getTmtiResponses(body);
+
+        if (responses.length === 0) {
+          sendJson(response, 400, {
+            error: {
+              code: 'INVALID_TMTI_RESPONSE_PAYLOAD',
+              message: 'POST /users/{id}/tmti-responses requires at least one response with questionCode and responseValue.',
+              details: [validationError('responses', 'responses must contain at least one complete TMTI answer.')],
+            },
+          });
+          return;
+        }
+
+        const profileResult = generatePlaceholderTmtiProfile(responses);
+        const result = saveTmtiProfileWithResponses({
+          userId,
+          tmtiType: profileResult.tmtiType,
+          dimensionScores: profileResult.dimensionScores,
+          confidenceScore: profileResult.confidenceScore,
+          version: profileResult.version,
+          responses,
+        });
+
+        sendJson(response, 200, {
+          data: result,
+          meta: {
+            adapter: profileResult.version,
+            swappableAdapter: true,
+          },
+        } as JsonPayload);
+      } catch (error) {
+        sendJson(response, 400, {
+          error: {
+            code: 'INVALID_TMTI_RESPONSE_PAYLOAD',
+            message: error instanceof Error ? error.message : 'Could not parse TMTI response payload.',
+          },
+        });
+      }
+      return;
+    }
+
     if (userTmtiProfileMatch) {
       const userId = decodeURIComponent(userTmtiProfileMatch[1]);
 
@@ -372,18 +435,15 @@ export function createDevApiMiddleware() {
 
       try {
         const body = await readJsonBody(request);
+        const responses = getTmtiResponses(body);
+        const generatedProfile = generatePlaceholderTmtiProfile(responses);
         const result = saveTmtiProfileWithResponses({
           userId,
-          tmtiType: typeof body.tmtiType === 'string' ? body.tmtiType : 'cnip',
-          dimensionScores: typeof body.dimensionScores === 'object' && body.dimensionScores !== null ? body.dimensionScores as Record<string, number> : {},
-          confidenceScore: typeof body.confidenceScore === 'number' ? body.confidenceScore : Number(body.confidenceScore ?? 0),
-          version: typeof body.version === 'string' ? body.version : 'v1',
-          responses: Array.isArray(body.responses)
-            ? body.responses.map((entry: any) => ({
-                questionCode: typeof entry?.questionCode === 'string' ? entry.questionCode : '',
-                responseValue: typeof entry?.responseValue === 'string' ? entry.responseValue : String(entry?.responseValue ?? ''),
-              }))
-            : [],
+          tmtiType: typeof body.tmtiType === 'string' ? body.tmtiType : generatedProfile.tmtiType,
+          dimensionScores: typeof body.dimensionScores === 'object' && body.dimensionScores !== null ? body.dimensionScores as Record<string, number> : generatedProfile.dimensionScores,
+          confidenceScore: typeof body.confidenceScore === 'number' ? body.confidenceScore : generatedProfile.confidenceScore,
+          version: typeof body.version === 'string' ? body.version : generatedProfile.version,
+          responses,
         });
 
         sendJson(response, 200, { data: result } as JsonPayload);
@@ -425,6 +485,19 @@ export function createDevApiMiddleware() {
       try {
         const userId = decodeURIComponent(userPreferencesMatch[1]);
         const body = await readJsonBody(request);
+        const errors = validatePreferencePayload(body);
+
+        if (errors.length > 0) {
+          sendJson(response, 400, {
+            error: {
+              code: 'INVALID_PREFERENCE_PAYLOAD',
+              message: 'POST /users/{id}/preferences received invalid fields.',
+              details: errors,
+            },
+          });
+          return;
+        }
+
         const preferences = upsertUserPreferences(userId, {
           areaCode: typeof body.areaCode === 'string' ? body.areaCode : undefined,
           preferredLanguage: typeof body.preferredLanguage === 'string' ? body.preferredLanguage : undefined,
@@ -462,7 +535,14 @@ export function createDevApiMiddleware() {
       try {
         const body = await readJsonBody(request) as MatchGenerationRequest;
         const savedPreferences = body.userId ? getUserPreferences(body.userId) : undefined;
-        const { preferences, errors } = resolveMatchPreferences(body, savedPreferences);
+        const savedTmtiProfile = body.userId ? getLatestTmtiProfile(body.userId) : undefined;
+        const { preferences, errors } = resolveMatchPreferences(
+          {
+            ...body,
+            cnipPreferenceProfile: body.cnipPreferenceProfile ?? savedPreferences?.cnipPreferenceProfile ?? savedTmtiProfile?.dimensionScores as MatchGenerationRequest['cnipPreferenceProfile'],
+          },
+          savedPreferences
+        );
 
         if (errors.length > 0) {
           sendJson(response, 400, {

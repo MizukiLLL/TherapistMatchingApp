@@ -21,7 +21,7 @@ View your app in AI Studio: https://ai.studio/apps/temp/1
 ## Local API
 
 The dev server persists local backend state to `server/data/therapist-matcher-db.json`.
-That JSON file is ignored by git so local users, preferences, and generated matches do not get committed.
+That JSON file is ignored by git so local users, preferences, TMTI profiles, ingested therapist profiles, and generated matches do not get committed.
 
 The dev server includes `GET /therapists` for therapist directory search:
 
@@ -54,5 +54,42 @@ Read persisted records with:
 `GET /users/demo-user/onboarding`
 `GET /users/demo-user/tmti-profile`
 
-Persist C-NIP/TMTI profile scoring with `POST /users/demo-user/tmti-profile`.
-Add a live therapist record to the local database with `POST /therapists`; searches and generated matches use seeded therapists plus any live therapist records.
+Persist raw TMTI answers and generate a placeholder profile with:
+
+`POST /users/demo-user/tmti-responses`
+
+```json
+{
+  "responses": [
+    { "questionCode": "directive_preference", "responseValue": "8" },
+    { "questionCode": "warm_support", "responseValue": "reflective support" }
+  ]
+}
+```
+
+Persist explicit C-NIP/TMTI profile scoring with `POST /users/demo-user/tmti-profile`.
+
+Turn a scraper-ready PsychologyToday profile into an immediate live result with:
+
+`POST /therapists/psychologytoday`
+
+```json
+{
+  "profileUrl": "https://www.psychologytoday.com/us/therapists/jane-li-new-york-ny",
+  "fullName": "Jane Li",
+  "credentials": "LCSW",
+  "languages": ["Mandarin", "English"],
+  "areaCodes": ["10001"],
+  "expertise": ["Anxiety"],
+  "sessionFormats": ["Virtual"],
+  "insurance": [{ "provider": "Aetna", "plan": "PPO", "acceptingNewPatients": true }],
+  "searchFilters": {
+    "areaCode": "10001",
+    "therapyType": "Anxiety",
+    "insuranceProvider": "Aetna",
+    "insurancePlan": "PPO"
+  }
+}
+```
+
+The response includes `liveResult`, and subsequent `/therapists` searches and `/matches/generate` calls use the ingested profile immediately.
