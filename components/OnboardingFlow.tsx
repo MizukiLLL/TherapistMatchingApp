@@ -1,13 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, HeartHandshake, Loader2, Send } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, HeartHandshake, Loader2, Send, Sparkles } from 'lucide-react';
 import { loadOnboardingState, saveOnboardingState } from '../onboardingApi';
-import { OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
+import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
+import { buildCnipPreferenceProfile, cnipStyleNames, recommendTherapists } from '../utils/therapistRecommendations';
 
-type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 type Locale = 'zh-CN' | 'zh-HK' | 'en';
 type LifeAspectCategory = keyof OnboardingFormData['lifeAspectsByCategory'];
 type LocalizedLabel = Record<Locale, string>;
 type Option<T extends string = string> = { id: T; label: LocalizedLabel };
+type CnipStyleOption = {
+  id: CnipConversationStyle;
+  name: string;
+  role: string;
+  prompt: string;
+  traits: string[];
+};
+
+const TOTAL_STEPS = 9;
 
 const LIFE_ASPECT_CATEGORY_BY_STEP: Record<4 | 5 | 6 | 7, LifeAspectCategory> = {
   4: 'symptomsAndDiagnoses',
@@ -47,6 +57,8 @@ const EMPTY_FORM: OnboardingFormData = {
   lifeAspectSkippedByCategory: emptyLifeAspectSkipped,
   insuranceProvider: '',
   insurancePlan: '',
+  cnipConversationStyles: [],
+  cnipPreferenceProfile: buildCnipPreferenceProfile([]),
 };
 
 const therapyForOptions: Option<Exclude<OnboardingFormData['therapyFor'], ''>>[] = [
@@ -97,6 +109,37 @@ const lifeAspectOptions: Record<LifeAspectCategory, Option[]> = {
   ],
 };
 
+const cnipStyleOptions: CnipStyleOption[] = [
+  {
+    id: 'structuredGuide',
+    name: 'Structured guide',
+    role: 'Keeps the session organized',
+    prompt: 'I will help name the pattern, set a goal, and suggest the next step.',
+    traits: ['directive', 'present-focused', 'clear plan'],
+  },
+  {
+    id: 'reflectiveCompanion',
+    name: 'Reflective companion',
+    role: 'Moves at your pace',
+    prompt: 'I will listen closely, reflect what I hear, and make room for nuance.',
+    traits: ['client-led', 'warm support', 'steady pace'],
+  },
+  {
+    id: 'deepExplorer',
+    name: 'Deep explorer',
+    role: 'Connects past and present',
+    prompt: 'I will help explore older experiences and the emotions underneath.',
+    traits: ['depth work', 'emotion-focused', 'past-oriented'],
+  },
+  {
+    id: 'practicalCoach',
+    name: 'Practical coach',
+    role: 'Turns insight into action',
+    prompt: 'I will challenge gently, practice tools, and keep momentum between sessions.',
+    traits: ['skills-based', 'focused challenge', 'home practice'],
+  },
+];
+
 const copyByLocale = {
   en: {
     brand: 'Care match',
@@ -108,7 +151,7 @@ const copyByLocale = {
     saving: 'Saving...',
     savedSuccess: 'Saved. You can move on to matching.',
     savedAtLabel: 'Last saved',
-    requiredHint: 'Pick at least one option or use "No, next" to continue.',
+    requiredHint: 'Pick at least one option, type a note, or use "No, next" to continue.',
     questionLanguage: 'What language would you like to use?',
     questionAreaCode: 'Thanks. What is your ZIP code?',
     questionTherapyFor: 'Who is this for?',
@@ -117,10 +160,21 @@ const copyByLocale = {
     questionTransitions: 'Are you going through any of these changes?',
     questionPhysical: 'Is any of this tied to your physical health?',
     questionIdentity: 'Is any of this about yourself or your relationships?',
+    questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP code',
     areaCodeHint: 'Please enter a 5-digit U.S. ZIP code.',
     moreToAddLabel: 'Anything else?',
     moreToAddPlaceholder: 'Write a short note...',
+    styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
+    recommendationsTitle: 'Recommended therapists',
+    recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
+    recommendationSource: 'PsychologyToday scraper-ready profiles',
+    styleFit: 'Style fit',
+    expertiseFit: 'Expertise fit',
+    logisticsFit: 'Logistics fit',
+    backToAnswers: 'Back to answers',
+    viewProfile: 'View profile',
+    selectedStylesLabel: 'Selected styles',
     noAndNext: 'No, next',
     skippedReply: 'No, next',
     loadError: 'Could not load your saved answers.',
@@ -138,7 +192,7 @@ const copyByLocale = {
     saving: '保存中...',
     savedSuccess: '已保存。接下来可以进入匹配。',
     savedAtLabel: '上次保存',
-    requiredHint: '请至少选一个选项，或者点“没有，下一个”。',
+    requiredHint: '请至少选一个选项、写一点补充，或者点“没有，下一个”。',
     questionLanguage: '你想用哪种语言？',
     questionAreaCode: '谢谢。你的 ZIP 邮编是多少？',
     questionTherapyFor: '这次是谁想找咨询师？',
@@ -147,10 +201,21 @@ const copyByLocale = {
     questionTransitions: '你最近有没有经历这些变化？',
     questionPhysical: '这些事情和身体状况有关吗？',
     questionIdentity: '这些事情和你自己、家人或关系有关吗？',
+    questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP 邮编',
     areaCodeHint: '请输入 5 位美国 ZIP 邮编。',
     moreToAddLabel: '还想补充吗？',
     moreToAddPlaceholder: '简单写一句就好...',
+    styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
+    recommendationsTitle: 'Recommended therapists',
+    recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
+    recommendationSource: 'PsychologyToday scraper-ready profiles',
+    styleFit: 'Style fit',
+    expertiseFit: 'Expertise fit',
+    logisticsFit: 'Logistics fit',
+    backToAnswers: 'Back to answers',
+    viewProfile: 'View profile',
+    selectedStylesLabel: 'Selected styles',
     noAndNext: '没有，下一个',
     skippedReply: '没有，下一个',
     loadError: '没能读取之前的回答。',
@@ -168,7 +233,7 @@ const copyByLocale = {
     saving: '儲存中...',
     savedSuccess: '已儲存。下一步可以開始配對。',
     savedAtLabel: '上次儲存',
-    requiredHint: '請至少揀一個選項，或者撳「冇，下一題」。',
+    requiredHint: '請至少揀一個選項、寫少少補充，或者撳「冇，下一題」。',
     questionLanguage: '你想用邊種語言？',
     questionAreaCode: '多謝。你嘅 ZIP code 係幾多？',
     questionTherapyFor: '今次係邊個想搵治療師？',
@@ -177,10 +242,21 @@ const copyByLocale = {
     questionTransitions: '你最近有冇經歷以下轉變？',
     questionPhysical: '呢啲事同身體狀況有關嗎？',
     questionIdentity: '呢啲事同你自己、屋企人或者關係有關嗎？',
+    questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP code',
     areaCodeHint: '請輸入 5 位美國 ZIP code。',
     moreToAddLabel: '仲想補充嗎？',
     moreToAddPlaceholder: '簡單寫一句就可以...',
+    styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
+    recommendationsTitle: 'Recommended therapists',
+    recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
+    recommendationSource: 'PsychologyToday scraper-ready profiles',
+    styleFit: 'Style fit',
+    expertiseFit: 'Expertise fit',
+    logisticsFit: 'Logistics fit',
+    backToAnswers: 'Back to answers',
+    viewProfile: 'View profile',
+    selectedStylesLabel: 'Selected styles',
     noAndNext: '冇，下一題',
     skippedReply: '冇，下一題',
     loadError: '讀取唔到之前嘅回答。',
@@ -214,10 +290,12 @@ export function OnboardingFlow() {
   const [errorMessage, setErrorMessage] = useState('');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [typedQuestion, setTypedQuestion] = useState('');
+  const [showRecommendations, setShowRecommendations] = useState(false);
 
   const locale = getLocaleFromPreferredLanguage(formData.preferredLanguage);
   const copy = copyByLocale[locale];
-  const progress = ((step + 1) / 8) * 100;
+  const progress = ((step + 1) / TOTAL_STEPS) * 100;
+  const recommendations = useMemo(() => recommendTherapists(formData), [formData]);
 
   const questions = useMemo(
     () => [
@@ -229,6 +307,7 @@ export function OnboardingFlow() {
       copy.questionTransitions,
       copy.questionPhysical,
       copy.questionIdentity,
+      copy.questionConversationStyle,
     ],
     [copy]
   );
@@ -248,6 +327,8 @@ export function OnboardingFlow() {
             lifeAspectSkippedByCategory: { ...emptyLifeAspectSkipped, ...(saved.data.lifeAspectSkippedByCategory ?? {}) },
             insuranceProvider: saved.data.insuranceProvider ?? '',
             insurancePlan: saved.data.insurancePlan ?? '',
+            cnipConversationStyles: saved.data.cnipConversationStyles ?? [],
+            cnipPreferenceProfile: saved.data.cnipPreferenceProfile ?? buildCnipPreferenceProfile(saved.data.cnipConversationStyles ?? []),
           });
           setSavedAt(saved.updatedAt);
         }
@@ -279,8 +360,13 @@ export function OnboardingFlow() {
     if (step === 3) return formData.carePreference !== '';
     if (step >= 4 && step <= 7) {
       const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 4 | 5 | 6 | 7];
-      return formData.lifeAspectsByCategory[category].length > 0 || formData.lifeAspectSkippedByCategory[category];
+      return (
+        formData.lifeAspectsByCategory[category].length > 0 ||
+        formData.lifeAspectNotesByCategory[category].trim().length > 0 ||
+        formData.lifeAspectSkippedByCategory[category]
+      );
     }
+    if (step === 8) return formData.cnipConversationStyles.length > 0;
     return true;
   }, [formData, step]);
 
@@ -298,6 +384,7 @@ export function OnboardingFlow() {
       if (labels.length) return labels.join(', ');
       return note;
     }
+    if (targetStep === 8) return formData.cnipConversationStyles.map((style) => cnipStyleNames[style]).join(', ');
     return '';
   };
 
@@ -308,7 +395,7 @@ export function OnboardingFlow() {
 
   const goNext = () => {
     if (!currentStepValid) return;
-    setStep((prev) => (prev < 7 ? ((prev + 1) as Step) : prev));
+    setStep((prev) => (prev < 8 ? ((prev + 1) as Step) : prev));
   };
 
   const skipLifeAspectStep = () => {
@@ -329,7 +416,7 @@ export function OnboardingFlow() {
         [category]: true,
       },
     }));
-    setStep((prev) => (prev < 7 ? ((prev + 1) as Step) : prev));
+    setStep((prev) => (prev < 8 ? ((prev + 1) as Step) : prev));
   };
 
   const toggleLifeAspect = (category: LifeAspectCategory, lifeAspect: string) => {
@@ -350,6 +437,20 @@ export function OnboardingFlow() {
     });
   };
 
+  const toggleCnipStyle = (style: CnipConversationStyle) => {
+    setFormData((prev) => {
+      const selected = prev.cnipConversationStyles.includes(style)
+        ? prev.cnipConversationStyles.filter((entry) => entry !== style)
+        : [...prev.cnipConversationStyles, style];
+
+      return {
+        ...prev,
+        cnipConversationStyles: selected,
+        cnipPreferenceProfile: buildCnipPreferenceProfile(selected),
+      };
+    });
+  };
+
   const handleSubmit = async () => {
     if (!currentStepValid) return;
     setStatus('saving');
@@ -358,6 +459,7 @@ export function OnboardingFlow() {
       const saved = await saveOnboardingState(formData);
       setSavedAt(saved.updatedAt);
       setStatus('saved');
+      setShowRecommendations(true);
     } catch {
       setStatus('error');
       setErrorMessage(copy.submitError);
@@ -436,6 +538,60 @@ export function OnboardingFlow() {
       );
     }
 
+    if (step === 8) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm font-medium text-[#746c62]">{copy.styleHint}</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            {cnipStyleOptions.map((style, index) => {
+              const selected = formData.cnipConversationStyles.includes(style.id);
+              return (
+                <button
+                  type="button"
+                  key={style.id}
+                  onClick={() => toggleCnipStyle(style.id)}
+                  className={[
+                    'group min-h-[220px] rounded-[24px] border p-4 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
+                    selected ? 'border-[#66725d] bg-[#fffdf8]' : 'border-[#d2c7b4] bg-[#fbf7ef] hover:border-[#7a866f]',
+                  ].join(' ')}
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#6e7b64] text-sm font-semibold text-[#f9f5ec]">
+                        T{index + 1}
+                      </div>
+                      <div>
+                        <p className="text-base font-semibold text-[#332d28]">{style.name}</p>
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-[#8b8479]">{style.role}</p>
+                      </div>
+                    </div>
+                    <span
+                      className={[
+                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition',
+                        selected ? 'border-[#66725d] bg-[#6e7b64] text-[#f9f5ec]' : 'border-[#d2c7b4] bg-[#f7f2e8] text-transparent',
+                      ].join(' ')}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
+                  <div className="rounded-[20px] rounded-tl-md bg-white px-4 py-3 text-sm leading-6 text-[#40382f] shadow-sm">
+                    {style.prompt}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {style.traits.map((trait) => (
+                      <span key={trait} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-medium text-[#62594f]">
+                        {trait}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
     const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 4 | 5 | 6 | 7];
     return (
       <div className="w-full">
@@ -475,6 +631,107 @@ export function OnboardingFlow() {
     );
   };
 
+  if (showRecommendations) {
+    const selectedStyles = formData.cnipConversationStyles.map((style) => cnipStyleNames[style]).join(', ');
+
+    return (
+      <main className="min-h-screen bg-[#efe7d7] text-[#332d28]">
+        <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-6 sm:px-6">
+          <header className="flex flex-col gap-4 border-b border-[#d8d0c2] pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#8b8479]">
+                <Sparkles className="h-4 w-4 text-[#6e7b64]" />
+                {copy.recommendationSource}
+              </div>
+              <h1 className="text-3xl font-semibold leading-tight text-[#332d28] sm:text-4xl">{copy.recommendationsTitle}</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#746c62]">{copy.recommendationsSubtitle}</p>
+              {selectedStyles && (
+                <p className="mt-3 text-sm font-medium text-[#5f6658]">
+                  {copy.selectedStylesLabel}: {selectedStyles}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRecommendations(false)}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#40382f] transition hover:border-[#7a866f] hover:bg-[#f1ede3]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {copy.backToAnswers}
+            </button>
+          </header>
+
+          <section className="grid gap-4 py-6">
+            {recommendations.slice(0, 4).map((recommendation, index) => (
+              <article key={recommendation.therapist.id} className="rounded-[8px] border border-[#d8d0c2] bg-[#f7f2e8] p-5 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+                <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+                  <div>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Match {index + 1}</p>
+                        <h2 className="mt-1 text-2xl font-semibold text-[#332d28]">
+                          {recommendation.therapist.name}, {recommendation.therapist.credentials}
+                        </h2>
+                        <p className="mt-1 text-sm font-medium text-[#746c62]">{recommendation.therapist.location}</p>
+                      </div>
+                      <div className="rounded-full bg-[#6e7b64] px-4 py-2 text-sm font-semibold text-[#f9f5ec]">{recommendation.score}% match</div>
+                    </div>
+
+                    <p className="mt-4 max-w-3xl text-sm leading-6 text-[#40382f]">{recommendation.therapist.bio}</p>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {recommendation.therapist.therapyModels.map((model) => (
+                        <span key={model} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-medium text-[#62594f]">
+                          {model}
+                        </span>
+                      ))}
+                    </div>
+
+                    <ul className="mt-5 grid gap-2 text-sm leading-6 text-[#40382f]">
+                      {recommendation.reasons.map((reason) => (
+                        <li key={reason} className="flex gap-2">
+                          <Check className="mt-1 h-4 w-4 shrink-0 text-[#6e7b64]" />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <aside className="space-y-3 rounded-[8px] bg-[#fffdf8] p-4">
+                    {[
+                      [copy.styleFit, recommendation.styleFit],
+                      [copy.expertiseFit, recommendation.expertiseFit],
+                      [copy.logisticsFit, recommendation.logisticsFit],
+                    ].map(([label, value]) => (
+                      <div key={label as string}>
+                        <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">
+                          <span>{label}</span>
+                          <span>{value}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-[#ede6d8]">
+                          <div className="h-full rounded-full bg-[#6e7b64]" style={{ width: `${value}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                    <a
+                      href={recommendation.therapist.profileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#332d28] px-4 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#4a4239]"
+                    >
+                      {copy.viewProfile}
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </aside>
+                </div>
+              </article>
+            ))}
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#efe7d7] text-[#332d28]">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-6 sm:px-6">
@@ -486,7 +743,7 @@ export function OnboardingFlow() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">{copy.brand}</p>
               <p className="text-sm text-[#746c62]">
-                {copy.stepLabel} {step + 1} / 8
+                {copy.stepLabel} {step + 1} / {TOTAL_STEPS}
               </p>
             </div>
           </div>
@@ -577,7 +834,7 @@ export function OnboardingFlow() {
                   {copy.back}
                 </button>
 
-                {step < 7 ? (
+                {step < 8 ? (
                   <button
                     type="button"
                     onClick={goNext}

@@ -1,5 +1,14 @@
 export type PreferredLanguage = 'Mandarin' | 'Cantonese' | 'English';
 
+export type CnipConversationStyle = 'structuredGuide' | 'reflectiveCompanion' | 'deepExplorer' | 'practicalCoach';
+
+export type CnipPreferenceProfile = {
+  directiveness: number;
+  emotionalIntensity: number;
+  pastOrientation: number;
+  warmSupport: number;
+};
+
 export type OnboardingFormData = {
   areaCode: string;
   preferredLanguage: PreferredLanguage;
@@ -25,6 +34,8 @@ export type OnboardingFormData = {
   };
   insuranceProvider: string;
   insurancePlan: string;
+  cnipConversationStyles: CnipConversationStyle[];
+  cnipPreferenceProfile: CnipPreferenceProfile;
 };
 
 export type SavedOnboardingState = {

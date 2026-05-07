@@ -72,6 +72,8 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
         therapyTypes: lifeAspects,
         insuranceProvider: data.insuranceProvider,
         insurancePlan: data.insurancePlan,
+        cnipConversationStyles: data.cnipConversationStyles,
+        cnipPreferenceProfile: data.cnipPreferenceProfile,
       }),
     });
 
