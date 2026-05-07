@@ -5,10 +5,15 @@ export type PsychologyTodayTherapistProfile = {
   name: string;
   credentials: string;
   location: string;
+  licenseStates?: string[];
   areaCodes: string[];
   profileUrl: string;
   sessionFormats: Array<'Virtual' | 'InPerson'>;
+  languages?: string[];
   insuranceProviders: string[];
+  matchingInsurance?: Array<{ provider: string; plan: string | null; acceptingNewPatients: boolean }>;
+  hourlyRateMin?: number | null;
+  hourlyRateMax?: number | null;
   expertise: string[];
   therapyModels: string[];
   conversationStyleProfile: CnipPreferenceProfile;

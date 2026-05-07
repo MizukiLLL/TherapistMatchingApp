@@ -215,13 +215,22 @@ const copyByLocale = {
     insuranceHint: 'Insurance is required for backend matching in this prototype.',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
-    recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
-    recommendationSource: 'PsychologyToday scraper-ready profiles',
+    recommendationsSubtitle: 'Ranked by C-NIP style fit, profile expertise, language, location, session format, and insurance match.',
+    recommendationSource: 'Backend therapist profiles',
     styleFit: 'Style fit',
     expertiseFit: 'Expertise fit',
     logisticsFit: 'Logistics fit',
     backToAnswers: 'Back to answers',
     viewProfile: 'View profile',
+    matchedFocus: 'Matched focus',
+    profileFocus: 'Profile focus',
+    languagesLabel: 'Languages',
+    sessionFormatLabel: 'Sessions',
+    insuranceLabel: 'Insurance match',
+    rateLabel: 'Rate',
+    serviceAreaLabel: 'Service area',
+    noRecommendationsTitle: 'No exact matches yet',
+    noRecommendationsBody: 'Try broadening ZIP code, session format, or insurance. The backend returned no therapist profiles for this combination.',
     selectedStylesLabel: 'Selected styles',
     noAndNext: 'No, next',
     skippedReply: 'No, next',
@@ -256,13 +265,22 @@ const copyByLocale = {
     moreToAddPlaceholder: '简单写一句就好...',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
-    recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
-    recommendationSource: 'PsychologyToday scraper-ready profiles',
+    recommendationsSubtitle: 'Ranked by C-NIP style fit, profile expertise, language, location, session format, and insurance match.',
+    recommendationSource: 'Backend therapist profiles',
     styleFit: 'Style fit',
     expertiseFit: 'Expertise fit',
     logisticsFit: 'Logistics fit',
     backToAnswers: 'Back to answers',
     viewProfile: 'View profile',
+    matchedFocus: 'Matched focus',
+    profileFocus: 'Profile focus',
+    languagesLabel: 'Languages',
+    sessionFormatLabel: 'Sessions',
+    insuranceLabel: 'Insurance match',
+    rateLabel: 'Rate',
+    serviceAreaLabel: 'Service area',
+    noRecommendationsTitle: 'No exact matches yet',
+    noRecommendationsBody: 'Try broadening ZIP code, session format, or insurance. The backend returned no therapist profiles for this combination.',
     selectedStylesLabel: 'Selected styles',
     noAndNext: '没有，下一个',
     skippedReply: '没有，下一个',
@@ -297,13 +315,22 @@ const copyByLocale = {
     moreToAddPlaceholder: '簡單寫一句就可以...',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
-    recommendationsSubtitle: 'Ranked by C-NIP style fit, expertise, therapy models, location, session format, and insurance match.',
-    recommendationSource: 'PsychologyToday scraper-ready profiles',
+    recommendationsSubtitle: 'Ranked by C-NIP style fit, profile expertise, language, location, session format, and insurance match.',
+    recommendationSource: 'Backend therapist profiles',
     styleFit: 'Style fit',
     expertiseFit: 'Expertise fit',
     logisticsFit: 'Logistics fit',
     backToAnswers: 'Back to answers',
     viewProfile: 'View profile',
+    matchedFocus: 'Matched focus',
+    profileFocus: 'Profile focus',
+    languagesLabel: 'Languages',
+    sessionFormatLabel: 'Sessions',
+    insuranceLabel: 'Insurance match',
+    rateLabel: 'Rate',
+    serviceAreaLabel: 'Service area',
+    noRecommendationsTitle: 'No exact matches yet',
+    noRecommendationsBody: 'Try broadening ZIP code, session format, or insurance. The backend returned no therapist profiles for this combination.',
     selectedStylesLabel: 'Selected styles',
     noAndNext: '冇，下一題',
     skippedReply: '冇，下一題',
@@ -333,26 +360,35 @@ const chipClass = (selected: boolean) =>
 
 const therapistBubbleThemes = [
   {
-    bubble: 'bg-[#e7efe4] text-[#31412f]',
+    bubble: 'border border-[#d8e4d4] bg-[#edf5ea] text-[#31412f]',
+    tail: 'border-[#d8e4d4] bg-[#edf5ea]',
     tag: 'bg-[#6e7b64] text-[#f9f5ec]',
     meta: 'text-[#5e6d59]',
   },
   {
-    bubble: 'bg-[#efe3d6] text-[#4a3529]',
+    bubble: 'border border-[#e4d3c3] bg-[#f4e8dc] text-[#4a3529]',
+    tail: 'border-[#e4d3c3] bg-[#f4e8dc]',
     tag: 'bg-[#9a7458] text-[#fff8f1]',
     meta: 'text-[#7a5d49]',
   },
   {
-    bubble: 'bg-[#e4e8f0] text-[#2f3a4d]',
+    bubble: 'border border-[#d6deea] bg-[#ecf1f8] text-[#2f3a4d]',
+    tail: 'border-[#d6deea] bg-[#ecf1f8]',
     tag: 'bg-[#63748f] text-[#f8fbff]',
     meta: 'text-[#55657d]',
   },
   {
-    bubble: 'bg-[#ece3ee] text-[#46364e]',
+    bubble: 'border border-[#dfd3e2] bg-[#f2eaf4] text-[#46364e]',
+    tail: 'border-[#dfd3e2] bg-[#f2eaf4]',
     tag: 'bg-[#82658a] text-[#fcf8ff]',
     meta: 'text-[#6d5874]',
   },
 ] as const;
+
+const assistantBubbleClass =
+  'relative rounded-[22px] rounded-tl-md border border-[#e3ddd1] bg-[#fffdf8] px-5 py-4 text-[15px] leading-7 text-[#40382f] shadow-[0_10px_24px_rgba(97,86,68,0.08)]';
+
+const assistantBubbleTailClass = 'absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l border-[#e3ddd1] bg-[#fffdf8]';
 
 export function OnboardingFlow() {
   const [step, setStep] = useState<Step>(0);
@@ -701,18 +737,12 @@ export function OnboardingFlow() {
                         </div>
                         <div
                           className={[
-                            `rounded-[22px] rounded-tl-md px-5 py-4 text-[15px] leading-7 shadow-sm ${theme.bubble}`,
+                            `relative rounded-[22px] rounded-tl-md px-5 py-4 text-[15px] leading-7 shadow-[0_10px_24px_rgba(97,86,68,0.08)] ${theme.bubble}`,
                             selected ? 'outline outline-2 outline-offset-2 outline-[#6e7b64]' : '',
                           ].join(' ')}
                         >
+                          <span aria-hidden="true" className={`absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l ${theme.tail}`} />
                           <p>{style.sampleResponse(selectedConcernSample)}</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {style.traits.map((trait) => (
-                              <span key={trait} className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-current">
-                                {trait}
-                              </span>
-                            ))}
-                          </div>
                         </div>
                       </div>
                     </button>
@@ -795,70 +825,125 @@ export function OnboardingFlow() {
           </header>
 
           <section className="grid gap-4 pb-6">
-            {recommendations.slice(0, 4).map((recommendation, index) => (
-              <article key={recommendation.therapist.id} className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
-                <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
-                  <div>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Match {index + 1}</p>
-                        <h2 className="mt-1 text-2xl font-semibold text-[#332d28]">
-                          {recommendation.therapist.name}, {recommendation.therapist.credentials}
-                        </h2>
-                        <p className="mt-1 text-sm font-medium text-[#746c62]">{recommendation.therapist.location}</p>
+            {recommendations.length === 0 && (
+              <div className="rounded-[24px] border border-[#d8d0c2] bg-[#f7f2e8] p-6 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+                <h2 className="text-2xl font-semibold text-[#332d28]">{copy.noRecommendationsTitle}</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#746c62]">{copy.noRecommendationsBody}</p>
+              </div>
+            )}
+
+            {recommendations.slice(0, 4).map((recommendation, index) => {
+              const therapist = recommendation.therapist;
+              const languageText = therapist.languages?.length ? therapist.languages.join(', ') : 'Not listed';
+              const sessionText = therapist.sessionFormats.length ? therapist.sessionFormats.map((format) => (format === 'InPerson' ? 'In person' : 'Virtual')).join(' + ') : 'Confirm with therapist';
+              const insuranceText = therapist.matchingInsurance?.length
+                ? therapist.matchingInsurance.map((insurance) => `${insurance.provider}${insurance.plan ? ` ${insurance.plan}` : ''}`).join(', ')
+                : therapist.insuranceProviders.length
+                  ? therapist.insuranceProviders.join(', ')
+                  : 'Confirm with therapist';
+              const rateText =
+                therapist.hourlyRateMin && therapist.hourlyRateMax
+                  ? `$${therapist.hourlyRateMin}-$${therapist.hourlyRateMax}/session`
+                  : therapist.hourlyRateMin
+                    ? `From $${therapist.hourlyRateMin}/session`
+                    : 'Rate not listed';
+              const profileFocus = therapist.expertise.slice(0, 6);
+              const matchedFocus = therapist.therapyModels.length ? therapist.therapyModels : profileFocus.slice(0, 3);
+
+              return (
+                <article key={therapist.id} className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+                  <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
+                    <div>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Match {index + 1}</p>
+                          <h2 className="mt-1 text-2xl font-semibold text-[#332d28]">
+                            {therapist.name}, {therapist.credentials}
+                          </h2>
+                          <p className="mt-1 text-sm font-medium text-[#746c62]">{therapist.location}</p>
+                        </div>
+                        <div className="rounded-full bg-[#6e7b64] px-4 py-2 text-sm font-semibold text-[#f9f5ec]">{recommendation.score}% match</div>
                       </div>
-                      <div className="rounded-full bg-[#6e7b64] px-4 py-2 text-sm font-semibold text-[#f9f5ec]">{recommendation.score}% match</div>
+
+                      <p className="mt-4 max-w-3xl text-sm leading-6 text-[#40382f]">{therapist.bio}</p>
+
+                      <div className="mt-4 grid gap-3 rounded-[18px] border border-[#ded6c8] bg-[#fffdf8] p-4 text-sm text-[#40382f] sm:grid-cols-2">
+                        {[
+                          [copy.languagesLabel, languageText],
+                          [copy.sessionFormatLabel, sessionText],
+                          [copy.insuranceLabel, insuranceText],
+                          [copy.rateLabel, rateText],
+                          [copy.serviceAreaLabel, therapist.areaCodes.slice(0, 5).join(', ')],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{label}</p>
+                            <p className="mt-1 font-medium text-[#40382f]">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{copy.matchedFocus}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {matchedFocus.map((model) => (
+                            <span key={model} className="rounded-full bg-[#dfe7d8] px-3 py-1 text-xs font-semibold text-[#53614d]">
+                              {model}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{copy.profileFocus}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {profileFocus.map((focus) => (
+                            <span key={focus} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-medium text-[#62594f]">
+                              {focus}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <ul className="mt-5 grid gap-2 text-sm leading-6 text-[#40382f]">
+                        {recommendation.reasons.map((reason) => (
+                          <li key={reason} className="flex gap-2">
+                            <Check className="mt-1 h-4 w-4 shrink-0 text-[#6e7b64]" />
+                            <span>{reason}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
 
-                    <p className="mt-4 max-w-3xl text-sm leading-6 text-[#40382f]">{recommendation.therapist.bio}</p>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {recommendation.therapist.therapyModels.map((model) => (
-                        <span key={model} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-medium text-[#62594f]">
-                          {model}
-                        </span>
+                    <aside className="space-y-3 rounded-[8px] bg-[#fffdf8] p-4">
+                      {[
+                        [copy.styleFit, recommendation.styleFit],
+                        [copy.expertiseFit, recommendation.expertiseFit],
+                        [copy.logisticsFit, recommendation.logisticsFit],
+                      ].map(([label, value]) => (
+                        <div key={label as string}>
+                          <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">
+                            <span>{label}</span>
+                            <span>{value}%</span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-[#ede6d8]">
+                            <div className="h-full rounded-full bg-[#6e7b64]" style={{ width: `${value}%` }} />
+                          </div>
+                        </div>
                       ))}
-                    </div>
-
-                    <ul className="mt-5 grid gap-2 text-sm leading-6 text-[#40382f]">
-                      {recommendation.reasons.map((reason) => (
-                        <li key={reason} className="flex gap-2">
-                          <Check className="mt-1 h-4 w-4 shrink-0 text-[#6e7b64]" />
-                          <span>{reason}</span>
-                        </li>
-                      ))}
-                    </ul>
+                      <a
+                        href={therapist.profileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#332d28] px-4 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#4a4239]"
+                      >
+                        {copy.viewProfile}
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </aside>
                   </div>
-
-                  <aside className="space-y-3 rounded-[8px] bg-[#fffdf8] p-4">
-                    {[
-                      [copy.styleFit, recommendation.styleFit],
-                      [copy.expertiseFit, recommendation.expertiseFit],
-                      [copy.logisticsFit, recommendation.logisticsFit],
-                    ].map(([label, value]) => (
-                      <div key={label as string}>
-                        <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">
-                          <span>{label}</span>
-                          <span>{value}%</span>
-                        </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-[#ede6d8]">
-                          <div className="h-full rounded-full bg-[#6e7b64]" style={{ width: `${value}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                    <a
-                      href={recommendation.therapist.profileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#332d28] px-4 text-sm font-medium text-[#f9f5ec] transition hover:bg-[#4a4239]"
-                    >
-                      {copy.viewProfile}
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </aside>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </section>
         </div>
       </main>
@@ -898,7 +983,8 @@ export function OnboardingFlow() {
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d6d4c8] text-xs font-semibold text-[#5f6658]">
                     AI
                   </div>
-                  <div className="max-w-[88%] rounded-[22px] rounded-tl-md bg-[#fffdf8] px-5 py-4 text-[15px] leading-7 text-[#40382f] shadow-sm">
+                  <div className={`max-w-[88%] ${assistantBubbleClass}`}>
+                    <span aria-hidden="true" className={assistantBubbleTailClass} />
                     {copy.intro}
                   </div>
                 </div>
@@ -915,7 +1001,8 @@ export function OnboardingFlow() {
                       <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d6d4c8] text-xs font-semibold text-[#5f6658]">
                         AI
                       </div>
-                      <div className="max-w-[88%] rounded-[22px] rounded-tl-md bg-[#fffdf8] px-5 py-4 text-[15px] leading-7 text-[#40382f] shadow-sm">
+                      <div className={`max-w-[88%] ${assistantBubbleClass}`}>
+                        <span aria-hidden="true" className={assistantBubbleTailClass} />
                         {message.question}
                       </div>
                     </div>
@@ -931,7 +1018,8 @@ export function OnboardingFlow() {
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d6d4c8] text-xs font-semibold text-[#5f6658]">
                     AI
                   </div>
-                  <div className="max-w-[88%] rounded-[22px] rounded-tl-md bg-[#fffdf8] px-5 py-4 text-[22px] font-medium leading-8 text-[#332d28] shadow-sm sm:text-[24px]">
+                  <div className={`max-w-[88%] ${assistantBubbleClass} text-[22px] font-medium leading-8 text-[#332d28] sm:text-[24px]`}>
+                    <span aria-hidden="true" className={assistantBubbleTailClass} />
                     {typedQuestion}
                     <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse rounded-sm bg-[#6e7b64]" aria-hidden="true" />
                   </div>

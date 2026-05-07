@@ -119,9 +119,12 @@ type MatchGenerationResponse = {
       bio: string;
       licenseStates: string[];
       areaCodesServed: string[];
+      languages: string[];
       therapyTypes: string[];
       telehealthAvailable: boolean;
       inPersonAvailable: boolean;
+      hourlyRateMin: number | null;
+      hourlyRateMax: number | null;
       profileUrl: string;
     };
     hard_constraint_reasons: string[];
@@ -174,14 +177,19 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       id: match.therapistId,
       name: match.therapist.fullName,
       credentials: match.therapist.credentials,
-      location: `${match.therapist.licenseStates.join(', ')} - ZIP ${match.therapist.areaCodesServed.slice(0, 3).join(', ')}`,
+      location: `Licensed in ${match.therapist.licenseStates.join(', ')} - serves ZIP ${match.therapist.areaCodesServed.slice(0, 3).join(', ')}`,
+      licenseStates: match.therapist.licenseStates,
       areaCodes: match.therapist.areaCodesServed,
       profileUrl: match.therapist.profileUrl,
       sessionFormats: [
         ...(match.therapist.telehealthAvailable ? ['Virtual' as const] : []),
         ...(match.therapist.inPersonAvailable ? ['InPerson' as const] : []),
       ],
+      languages: match.therapist.languages,
       insuranceProviders: match.explanation.matchingInsurance.map((insurance) => insurance.provider),
+      matchingInsurance: match.explanation.matchingInsurance,
+      hourlyRateMin: match.therapist.hourlyRateMin,
+      hourlyRateMax: match.therapist.hourlyRateMax,
       expertise: match.therapist.therapyTypes,
       therapyModels: match.explanation.matchedTherapyTypes.slice(0, 3),
       conversationStyleProfile: data.cnipPreferenceProfile,
