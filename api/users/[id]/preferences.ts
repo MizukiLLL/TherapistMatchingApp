@@ -1,4 +1,4 @@
-import { readJsonBody, sendJson } from '../../shared';
+import { readJsonBody, sendJson } from '../../shared.js';
 
 export default async function handler(request: any, response: any) {
   if (request.method !== 'POST') {
