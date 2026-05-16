@@ -69,6 +69,16 @@ function overlap(left: string[], right: string[]): string[] {
   return left.filter((value) => rightSet.has(value.toLowerCase()));
 }
 
+function unique(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function textMatchesAny(text: string, values: string[]): boolean {
   const normalizedText = text.toLowerCase();
   return values.some((value) => normalizedText.includes(value.toLowerCase()));
@@ -152,7 +162,7 @@ export function generateMatches(body: Record<string, unknown>) {
       const culturalContextNeeds = stringList(body.culturalContextNeeds).filter((value) => value.toLowerCase() !== 'no strong preference');
       const modalityPreferenceIds = stringList(body.modalityPreferenceIds);
       const matchedTherapyTypes = overlap(therapist.therapyTypes, therapyTypes);
-      const modelTargets = modalityPreferenceIds.flatMap((id) => {
+      const modelTargets = unique(modalityPreferenceIds.flatMap((id) => {
         if (id === 'toolsBased') return ['CBT', 'DBT', 'Solution-Focused'];
         if (id === 'insightBased') return ['Psychodynamic', 'Insight', 'Attachment'];
         if (id === 'traumaProcessing') return ['EMDR', 'Trauma', 'Somatic'];
@@ -162,7 +172,7 @@ export function generateMatches(body: Record<string, unknown>) {
         if (id === 'culturallyResponsive') return ['Culturally Responsive', 'Narrative', 'Family Systems'];
         if (id === 'neurodiversityAffirming') return ['Neurodiversity', 'ADHD', 'Autism', 'CBT', 'DBT'];
         return [];
-      });
+      }));
       const therapistModelText = `${therapist.therapyModels.join(' ')} ${therapist.bio}`;
       const matchedTherapyModels = modelTargets.length > 0 ? modelTargets.filter((model) => textMatchesAny(therapistModelText, [model])) : overlap(therapist.therapyModels, therapyTypes);
       const matchingInsurance = therapist.insurance.filter((insurance) => {

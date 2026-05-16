@@ -36,6 +36,16 @@ function overlap(left, right) {
     const rightSet = new Set(right.map((value) => value.toLowerCase()));
     return left.filter((value) => rightSet.has(value.toLowerCase()));
 }
+function unique(values) {
+    const seen = new Set();
+    return values.filter((value) => {
+        const key = value.toLowerCase();
+        if (seen.has(key))
+            return false;
+        seen.add(key);
+        return true;
+    });
+}
 function textMatchesAny(text, values) {
     const normalizedText = text.toLowerCase();
     return values.some((value) => normalizedText.includes(value.toLowerCase()));
@@ -111,7 +121,7 @@ export function generateMatches(body) {
         const culturalContextNeeds = stringList(body.culturalContextNeeds).filter((value) => value.toLowerCase() !== 'no strong preference');
         const modalityPreferenceIds = stringList(body.modalityPreferenceIds);
         const matchedTherapyTypes = overlap(therapist.therapyTypes, therapyTypes);
-        const modelTargets = modalityPreferenceIds.flatMap((id) => {
+        const modelTargets = unique(modalityPreferenceIds.flatMap((id) => {
             if (id === 'toolsBased')
                 return ['CBT', 'DBT', 'Solution-Focused'];
             if (id === 'insightBased')
@@ -129,7 +139,7 @@ export function generateMatches(body) {
             if (id === 'neurodiversityAffirming')
                 return ['Neurodiversity', 'ADHD', 'Autism', 'CBT', 'DBT'];
             return [];
-        });
+        }));
         const therapistModelText = `${therapist.therapyModels.join(' ')} ${therapist.bio}`;
         const matchedTherapyModels = modelTargets.length > 0 ? modelTargets.filter((model) => textMatchesAny(therapistModelText, [model])) : overlap(therapist.therapyModels, therapyTypes);
         const matchingInsurance = therapist.insurance.filter((insurance) => {
