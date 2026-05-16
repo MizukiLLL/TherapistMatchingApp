@@ -1,4 +1,4 @@
-import { sendJson } from '../../shared.ts';
+import { sendJson } from '../../shared';
 
 export default function handler(request: any, response: any) {
   if (request.method !== 'GET') {

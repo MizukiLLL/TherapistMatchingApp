@@ -1,4 +1,4 @@
-import { normalize, readJsonBody, sendJson } from './shared.ts';
+import { normalize, readJsonBody, sendJson } from './shared';
 
 export default async function handler(request: any, response: any) {
   if (request.method !== 'POST') {
