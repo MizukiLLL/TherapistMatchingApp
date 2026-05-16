@@ -1,4 +1,5 @@
 import type { IdealTherapistProfile, LegacyCnipProfile, StyleVector, UserStyleScenarioChoice } from './matchingTypes.ts';
+import { generateIdealTherapistProfileFromInputs } from './idealTherapistProfile.ts';
 
 export type StyleScenarioCard = {
   id: string;
@@ -216,37 +217,10 @@ export function legacyProfileToStyleVector(profile?: Partial<LegacyCnipProfile>)
 }
 
 export function generateIdealTherapistProfile(userStyleVector: StyleVector): IdealTherapistProfile {
-  const directive = userStyleVector.therapist_directive >= 0.58;
-  const intensive = userStyleVector.emotionally_intensive >= 0.58;
-  const past = userStyleVector.past_focused >= 0.55;
-  const supportive = userStyleVector.support_focused >= 0.58;
-
-  const titleParts = [
-    supportive ? 'Warm' : 'Growth-oriented',
-    directive ? 'structured' : 'collaborative',
-    intensive ? 'emotionally attuned' : 'steady',
-  ];
-  const title = `${titleParts[0]}, ${titleParts[1]}, and ${titleParts[2]}`;
-  const summary = `Your preferences suggest you may work best with a therapist who ${supportive ? 'helps you feel understood' : 'can be honest and growth-focused'} while also ${directive ? 'offering clear direction and next steps' : 'letting the pace feel collaborative'}.`;
-
-  const preferredTraits = [
-    supportive ? 'Supportive and validating' : 'Honest and growth-focused',
-    directive ? 'Gently directive' : 'Collaborative and client-led',
-    intensive ? 'Comfortable with deeper emotions' : 'Emotionally steady',
-    past ? 'Open to exploring deeper patterns' : 'Present-focused and practical',
-  ];
-
-  const lessHelpfulTraits = [
-    supportive ? 'Overly confrontational too early' : 'Only validating without helping you shift patterns',
-    directive ? 'Too open-ended without structure' : 'Too directive before trust is built',
-    intensive ? 'Staying only on surface-level tips' : 'Diving too deeply too fast',
-  ];
-
-  return {
-    title,
-    summary,
-    preferredTraits,
-    lessHelpfulTraits,
+  return generateIdealTherapistProfileFromInputs({
     userStyleVector,
-  };
+    selectedConcerns: [],
+    freeTextNotes: [],
+    modalityPreferenceIds: [],
+  });
 }

@@ -71,6 +71,8 @@ assert.ok(inferred.confidence > 0.3);
 const hardFilter = applyHardFilters(therapist({ practical: { ...therapist({}).practical, languages: ['English'] } }), {
   areaCode: '94105',
   preferredLanguage: 'Mandarin',
+  requiredLanguages: ['Mandarin'],
+  languagePriority: 'required',
   insuranceProvider: 'Aetna',
   carePreference: 'Virtual',
 });
@@ -85,6 +87,7 @@ const ranked = rankTherapists(
     rawUserConcerns: ['anxiety'],
     userConcernTags: ['anxiety'],
     userStyleVector: practicalVector,
+    recommendedModalities: [{ modalityId: 'cbt', displayName: 'CBT', explanation: 'test', reason: 'test' }],
   },
   [
     therapist({ therapist_id: 'strong-style', name: 'Strong Style' }),

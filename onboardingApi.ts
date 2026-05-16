@@ -102,6 +102,8 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
         cnipPreferenceProfile: data.cnipPreferenceProfile,
         styleScenarioResponses: data.styleScenarioResponses,
         userStyleVector: data.userStyleVector,
+        modalityPreferenceIds: data.modalityPreferenceIds,
+        logistics: data.logistics,
       }),
     });
 
@@ -145,6 +147,7 @@ type MatchGenerationResponse = {
     scoreBreakdown?: {
       practicalFit: number;
       clinicalFit: number;
+      modalityFit: number;
       adjustedStyleFit: number;
       culturalLanguageFit: number;
       profileQualityTrust: number;
@@ -174,6 +177,12 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       userId,
       areaCode: data.areaCode,
       preferredLanguage: data.preferredLanguage,
+      requiredLanguages: data.logistics.requiredLanguages,
+      preferredLanguages: data.logistics.preferredLanguages,
+      languagePriority: data.logistics.languagePriority,
+      culturalContextNeeds: data.logistics.culturalContextNeeds,
+      identitySupportNeeds: data.logistics.identitySupportNeeds,
+      culturePriority: data.logistics.culturePriority,
       therapyTypes: [
         ...data.lifeAspectsByCategory.symptomsAndDiagnoses,
         ...data.lifeAspectsByCategory.lifeStagesAndTransitions,
@@ -182,10 +191,15 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       ],
       insuranceProvider: data.insuranceProvider,
       insurancePlan: data.insurancePlan,
+      paymentPreference: data.logistics.paymentPreference,
+      budgetRange: data.logistics.budgetRange,
+      availability: data.logistics.availability,
+      therapyFor: data.therapyFor,
       carePreference: data.carePreference,
       cnipPreferenceProfile: data.cnipPreferenceProfile,
       styleScenarioResponses: data.styleScenarioResponses,
       userStyleVector: data.userStyleVector,
+      modalityPreferenceIds: data.modalityPreferenceIds,
       fetchPsychologyToday: true,
     }),
   });

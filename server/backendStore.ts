@@ -1,7 +1,7 @@
 import type { TherapistMatch } from './matchingEngine.ts';
 import { readDatabase, writeDatabase } from './localDatabase.ts';
 import { therapistDirectory, type TherapistDirectoryRecord } from './therapistDirectory.ts';
-import type { CnipConversationStyle, OnboardingFormData, SavedOnboardingState, StyleScenarioResponse, UserStyleVector } from '../onboardingTypes.ts';
+import type { CnipConversationStyle, LogisticsDetails, ModalityPreferenceId, OnboardingFormData, SavedOnboardingState, StyleScenarioResponse, UserStyleVector } from '../onboardingTypes.ts';
 
 export type UserRecord = {
   id: string;
@@ -33,6 +33,8 @@ export type UserPreferenceRecord = {
   };
   styleScenarioResponses?: StyleScenarioResponse[];
   userStyleVector?: UserStyleVector;
+  modalityPreferenceIds?: ModalityPreferenceId[];
+  logistics?: LogisticsDetails;
   updatedAt: string;
 };
 
@@ -172,6 +174,8 @@ export function upsertUserPreferences(userId: string, input: Partial<UserPrefere
     cnipPreferenceProfile: input.cnipPreferenceProfile ?? existing?.cnipPreferenceProfile,
     styleScenarioResponses: input.styleScenarioResponses ?? existing?.styleScenarioResponses,
     userStyleVector: input.userStyleVector ?? existing?.userStyleVector,
+    modalityPreferenceIds: input.modalityPreferenceIds ?? existing?.modalityPreferenceIds,
+    logistics: input.logistics ?? existing?.logistics,
     updatedAt: nowIso(),
   };
 
@@ -293,6 +297,20 @@ export function getSavedOnboardingState(userId: string): SavedOnboardingState | 
       },
       styleScenarioResponses: preference.styleScenarioResponses ?? [],
       userStyleVector,
+      modalityPreferenceIds: preference.modalityPreferenceIds ?? [],
+      logistics: preference.logistics ?? {
+        requiredLanguages: [],
+        preferredLanguages: preference.preferredLanguage ? [preference.preferredLanguage] : [],
+        languagePriority: preference.preferredLanguage ? 'preferred' : 'flexible',
+        culturalContextNeeds: ['no strong preference'],
+        identitySupportNeeds: [],
+        culturePriority: 'low',
+        state: '',
+        radiusMiles: null,
+        paymentPreference: preference.insuranceProvider ? 'insurance' : '',
+        budgetRange: '',
+        availability: '',
+      },
     },
     updatedAt: preference.updatedAt,
   };
@@ -343,6 +361,10 @@ export function upsertLiveTherapist(record: TherapistDirectoryRecord & { sourceP
 }
 
 export function getAllTherapists(): TherapistDirectoryRecord[] {
+  if (database.liveTherapists.length > 0) {
+    return database.liveTherapists;
+  }
+
   const liveById = new Map(database.liveTherapists.map((therapist) => [therapist.id, therapist]));
   const seededTherapists = therapistDirectory.filter((therapist) => !liveById.has(therapist.id));
 

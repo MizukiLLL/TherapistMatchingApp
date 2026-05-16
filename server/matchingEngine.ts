@@ -3,8 +3,11 @@ import type { TherapistDirectoryRecord, TherapistInsurance } from './therapistDi
 import { normalizeConcernTags } from '../matching/clinicalTagNormalizer.ts';
 import { rankTherapists } from '../matching/matchingAlgorithm.ts';
 import { normalizeTherapistProfile } from '../matching/therapistProfileNormalizer.ts';
-import { generateIdealTherapistProfile, legacyProfileToStyleVector, scoreUserStyleScenarios } from '../matching/userStyleScoring.ts';
-import type { IdealTherapistProfile, MatchExplanation, MatchScoreBreakdown, StyleVector, UserStyleScenarioChoice } from '../matching/matchingTypes.ts';
+import { legacyProfileToStyleVector, scoreUserStyleScenarios } from '../matching/userStyleScoring.ts';
+import { generateIdealTherapistProfileFromInputs } from '../matching/idealTherapistProfile.ts';
+import { getRecommendedModalities } from '../matching/modalityPreferenceAssessment.ts';
+import { buildConcernAssessment } from '../matching/concernAssessment.ts';
+import type { IdealTherapistProfile, MatchExplanation, MatchScoreBreakdown, ModalityPreferenceId, StyleVector, UserStyleScenarioChoice } from '../matching/matchingTypes.ts';
 
 type StyleSignalProfile = {
   directiveness: number;
@@ -19,12 +22,23 @@ export type MatchGenerationRequest = {
   preferredLanguage?: string;
   therapyType?: string;
   therapyTypes?: string[];
+  therapyFor?: string;
   insuranceProvider?: string;
   insurancePlan?: string;
   carePreference?: string;
   cnipPreferenceProfile?: StyleSignalProfile;
   styleScenarioResponses?: UserStyleScenarioChoice[];
   userStyleVector?: StyleVector;
+  modalityPreferenceIds?: ModalityPreferenceId[];
+  requiredLanguages?: string[];
+  preferredLanguages?: string[];
+  languagePriority?: 'required' | 'preferred' | 'flexible';
+  culturalContextNeeds?: string[];
+  identitySupportNeeds?: string[];
+  culturePriority?: 'high' | 'medium' | 'low';
+  paymentPreference?: string;
+  budgetRange?: string;
+  availability?: string;
   limit?: number;
 };
 
@@ -41,9 +55,20 @@ export type ResolvedMatchPreferences = {
   insuranceProvider: string;
   insurancePlan?: string;
   carePreference?: string;
+  therapyFor?: string;
   cnipPreferenceProfile?: StyleSignalProfile;
   styleScenarioResponses?: UserStyleScenarioChoice[];
   userStyleVector?: StyleVector;
+  modalityPreferenceIds: ModalityPreferenceId[];
+  requiredLanguages: string[];
+  preferredLanguages: string[];
+  languagePriority: 'required' | 'preferred' | 'flexible';
+  culturalContextNeeds: string[];
+  identitySupportNeeds: string[];
+  culturePriority: 'high' | 'medium' | 'low';
+  paymentPreference?: string;
+  budgetRange?: string;
+  availability?: string;
   limit: number;
 };
 
@@ -313,9 +338,20 @@ export function resolveMatchPreferences(
     insuranceProvider: normalize(request.insuranceProvider) || savedPreferences?.insuranceProvider || '',
     insurancePlan: normalize(request.insurancePlan) || savedPreferences?.insurancePlan,
     carePreference: normalize(request.carePreference) || savedPreferences?.carePreference,
+    therapyFor: normalize(request.therapyFor) || savedPreferences?.therapyFor,
     cnipPreferenceProfile: request.cnipPreferenceProfile ?? savedPreferences?.cnipPreferenceProfile,
     styleScenarioResponses: request.styleScenarioResponses ?? savedPreferences?.styleScenarioResponses,
     userStyleVector: request.userStyleVector ?? savedPreferences?.userStyleVector,
+    modalityPreferenceIds: (compactStringList(request.modalityPreferenceIds) as ModalityPreferenceId[]) ?? [],
+    requiredLanguages: compactStringList(request.requiredLanguages),
+    preferredLanguages: compactStringList(request.preferredLanguages),
+    languagePriority: request.languagePriority ?? 'preferred',
+    culturalContextNeeds: compactStringList(request.culturalContextNeeds),
+    identitySupportNeeds: compactStringList(request.identitySupportNeeds),
+    culturePriority: request.culturePriority ?? 'low',
+    paymentPreference: normalize(request.paymentPreference),
+    budgetRange: normalize(request.budgetRange),
+    availability: normalize(request.availability),
     limit: parseLimit(request.limit),
   };
   const errors: MatchGenerationValidationError[] = [];
@@ -337,15 +373,28 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
   const activeTherapists = directory.filter((therapist) => therapist.isActive);
   const therapistById = new Map(activeTherapists.map((therapist) => [therapist.id, therapist]));
   const normalizedTherapists = activeTherapists.map(normalizeTherapistProfile);
+  const concernAssessment = buildConcernAssessment({ selectedConcerns: preferences.therapyTypes });
+  const recommendedModalities = getRecommendedModalities(preferences.modalityPreferenceIds, concernAssessment.concernTags);
   const rankedMatches = rankTherapists(
     {
       areaCode: preferences.areaCode,
       preferredLanguage: preferences.preferredLanguage,
+      requiredLanguages: preferences.requiredLanguages,
+      preferredLanguages: preferences.preferredLanguages,
+      languagePriority: preferences.languagePriority,
+      culturalContextNeeds: preferences.culturalContextNeeds,
+      identitySupportNeeds: preferences.identitySupportNeeds,
+      culturePriority: preferences.culturePriority,
       insuranceProvider: preferences.insuranceProvider,
+      paymentPreference: preferences.paymentPreference,
       carePreference: preferences.carePreference,
+      budgetRange: preferences.budgetRange,
+      therapyFor: preferences.therapyFor,
+      availability: preferences.availability,
       rawUserConcerns: preferences.therapyTypes,
-      userConcernTags: normalizeConcernTags(preferences.therapyTypes),
+      userConcernTags: concernAssessment.concernTags.length ? concernAssessment.concernTags : normalizeConcernTags(preferences.therapyTypes),
       userStyleVector,
+      recommendedModalities,
     },
     normalizedTherapists
   ).slice(0, preferences.limit);
@@ -357,12 +406,12 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
 
       const matchedTherapyTypes = matchingValues(therapist.therapyTypes, preferences.therapyTypes);
       const matchingInsurance = getMatchingInsurance(therapist, preferences);
-      const recommendedTherapyModels = getRecommendedTherapyModels(preferences.therapyTypes);
+      const recommendedTherapyModels = recommendedModalities.length ? recommendedModalities.map((modality) => modality.displayName) : getRecommendedTherapyModels(preferences.therapyTypes);
       const matchedTherapyModels = getMatchedTherapyModels(therapist.therapyModels ?? [], recommendedTherapyModels);
       const expertiseScore = clampScore(match.scoreBreakdown.clinicalFit * 100);
       const languageScore = scoreLanguage(therapist, preferences.preferredLanguage);
       const formatScore = scoreSessionFormat(therapist, preferences.carePreference);
-      const therapyModelScore = scoreTherapyModels(therapist, recommendedTherapyModels);
+      const therapyModelScore = clampScore(match.scoreBreakdown.modalityFit * 100);
       const preferenceScore = clampScore(match.scoreBreakdown.practicalFit * 100);
       const cnipScore = clampScore(match.scoreBreakdown.adjustedStyleFit * 100);
       const finalScore = clampScore(match.finalScore * 100);
@@ -416,6 +465,12 @@ export function buildMatchGenerationResponse(preferences: ResolvedMatchPreferenc
     (preferences.styleScenarioResponses?.length
       ? scoreUserStyleScenarios(preferences.styleScenarioResponses)
       : legacyProfileToStyleVector(preferences.cnipPreferenceProfile));
+  const userIdealProfile = generateIdealTherapistProfileFromInputs({
+    userStyleVector,
+    selectedConcerns: preferences.therapyTypes,
+    freeTextNotes: [],
+    modalityPreferenceIds: preferences.modalityPreferenceIds,
+  });
 
   return {
     data,
@@ -432,7 +487,7 @@ export function buildMatchGenerationResponse(preferences: ResolvedMatchPreferenc
       },
       elapsedMs,
       generatedAt: new Date().toISOString(),
-      userIdealProfile: generateIdealTherapistProfile(userStyleVector),
+      userIdealProfile,
     },
   };
 }

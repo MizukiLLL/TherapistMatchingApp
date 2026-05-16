@@ -19,12 +19,34 @@ export type UserStyleScenarioChoice = {
   leastCardId?: string;
 };
 
+export type ModalityPreferenceId =
+  | 'toolsBased'
+  | 'insightBased'
+  | 'traumaProcessing'
+  | 'relationshipFocused'
+  | 'valuesActionBased'
+  | 'somaticRegulation'
+  | 'culturallyResponsive'
+  | 'neurodiversityAffirming';
+
+export type RecommendedModality = {
+  modalityId: string;
+  displayName: string;
+  explanation: string;
+  reason: string;
+};
+
 export type IdealTherapistProfile = {
   title: string;
   summary: string;
-  preferredTraits: string[];
-  lessHelpfulTraits: string[];
+  mainConcerns: string[];
+  preferredConversationStyle: string[];
+  recommendedModalities: RecommendedModality[];
+  whatToLookFor: string[];
+  consultationQuestions: string[];
   userStyleVector: StyleVector;
+  preferredTraits?: string[];
+  lessHelpfulTraits?: string[];
 };
 
 export type NormalizedTherapistProfile = {
@@ -56,6 +78,7 @@ export type NormalizedTherapistProfile = {
 export type MatchScoreBreakdown = {
   practicalFit: number;
   clinicalFit: number;
+  modalityFit: number;
   adjustedStyleFit: number;
   culturalLanguageFit: number;
   profileQualityTrust: number;

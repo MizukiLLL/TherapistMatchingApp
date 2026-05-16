@@ -4,9 +4,19 @@ import type { NormalizedTherapistProfile } from './matchingTypes.ts';
 export type PracticalFitInput = {
   areaCode: string;
   preferredLanguage?: string;
+  requiredLanguages?: string[];
+  preferredLanguages?: string[];
+  languagePriority?: 'required' | 'preferred' | 'flexible';
+  culturalContextNeeds?: string[];
+  identitySupportNeeds?: string[];
+  culturePriority?: 'high' | 'medium' | 'low';
   insuranceProvider?: string;
+  paymentPreference?: string;
   carePreference?: string;
   maxFee?: number;
+  budgetRange?: string;
+  therapyFor?: string;
+  availability?: string;
 };
 
 export type HardFilterResult = {
@@ -37,8 +47,10 @@ function isChineseLanguage(value?: string): boolean {
   return /mandarin|cantonese|chinese|普通|廣東|广东/i.test(value ?? '');
 }
 
-function languageFit(therapist: NormalizedTherapistProfile, preferredLanguage?: string): number {
-  if (!preferredLanguage) return 0.8;
+function languageFit(therapist: NormalizedTherapistProfile, input: PracticalFitInput): number {
+  const languages = [...(input.requiredLanguages ?? []), ...(input.preferredLanguages ?? [])];
+  const preferredLanguage = languages[0] ?? input.preferredLanguage;
+  if (!preferredLanguage || input.languagePriority === 'flexible') return 0.8;
   if (includesNormalized(therapist.practical.languages, preferredLanguage)) return 1;
   if (normalize(preferredLanguage) === 'english') return therapist.practical.languages.length === 0 ? 0.5 : 0.4;
   if (isChineseLanguage(preferredLanguage) && therapist.practical.languages.some(isChineseLanguage)) return 0.7;
@@ -50,6 +62,15 @@ function insuranceFit(therapist: NormalizedTherapistProfile, insuranceProvider?:
   if (includesNormalized(therapist.practical.insurance, insuranceProvider)) return 1;
   if (therapist.practical.insurance.length === 0) return 0.5;
   return 0.35;
+}
+
+function budgetToMaxFee(budgetRange?: string, maxFee?: number): number | undefined {
+  if (maxFee) return maxFee;
+  if (budgetRange === 'under_75') return 75;
+  if (budgetRange === '75_125') return 125;
+  if (budgetRange === '125_175') return 175;
+  if (budgetRange === '175_250') return 250;
+  return undefined;
 }
 
 function locationModeFit(therapist: NormalizedTherapistProfile, input: PracticalFitInput): number {
@@ -82,11 +103,12 @@ export function applyHardFilters(therapist: NormalizedTherapistProfile, input: P
   const reasons: string[] = [];
   const preference = normalize(input.carePreference);
 
-  if (input.preferredLanguage && normalize(input.preferredLanguage) !== 'english' && languageFit(therapist, input.preferredLanguage) <= 0) {
-    reasons.push(`Does not list ${input.preferredLanguage}.`);
+  const requiredLanguages = input.languagePriority === 'required' ? input.requiredLanguages ?? [] : [];
+  if (requiredLanguages.length > 0 && requiredLanguages.every((language) => languageFit(therapist, { ...input, preferredLanguage: language }) <= 0)) {
+    reasons.push(`Does not list required language: ${requiredLanguages.join(', ')}.`);
   }
 
-  if (input.insuranceProvider && insuranceFit(therapist, input.insuranceProvider) < 1) {
+  if (input.paymentPreference === 'insurance' && input.insuranceProvider && insuranceFit(therapist, input.insuranceProvider) < 1) {
     reasons.push(`Does not clearly accept ${input.insuranceProvider}.`);
   }
 
@@ -106,11 +128,11 @@ export function applyHardFilters(therapist: NormalizedTherapistProfile, input: P
 }
 
 export function scorePracticalFit(therapist: NormalizedTherapistProfile, input: PracticalFitInput): PracticalFitResult {
-  const language = languageFit(therapist, input.preferredLanguage);
+  const language = languageFit(therapist, input);
   const insurance = insuranceFit(therapist, input.insuranceProvider);
   const locationMode = locationModeFit(therapist, input);
   const availability = availabilityFit(therapist);
-  const affordability = affordabilityFit(therapist, input.maxFee);
+  const affordability = affordabilityFit(therapist, budgetToMaxFee(input.budgetRange, input.maxFee));
   const unknownFactors = [language, insurance, locationMode, availability, affordability].filter((score) => score === 0.5).length;
   const profileQualityPenalty = Math.max(0, unknownFactors * 0.04);
   const score =

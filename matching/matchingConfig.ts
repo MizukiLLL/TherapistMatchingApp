@@ -1,8 +1,10 @@
 export const MATCHING_WEIGHTS = {
-  practicalFit: 0.35,
-  clinicalFit: 0.30,
-  adjustedStyleFit: 0.25,
-  profileQualityTrust: 0.10,
+  practicalFit: 0.30,
+  clinicalFit: 0.25,
+  modalityFit: 0.23,
+  culturalLanguageFit: 0.12,
+  adjustedStyleFit: 0.07,
+  profileQualityTrust: 0.03,
 } as const;
 
 export const PRACTICAL_FIT_WEIGHTS = {

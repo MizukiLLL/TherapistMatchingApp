@@ -11,12 +11,13 @@ type TestingMatch = {
     therapyModels: string[];
   };
   final_score: number;
-  scoreBreakdown?: {
-    practicalFit: number;
-    clinicalFit: number;
-    adjustedStyleFit: number;
-    culturalLanguageFit: number;
-    profileQualityTrust: number;
+    scoreBreakdown?: {
+      practicalFit: number;
+      clinicalFit: number;
+      modalityFit: number;
+      adjustedStyleFit: number;
+      culturalLanguageFit: number;
+      profileQualityTrust: number;
   };
   styleVector?: {
     therapist_directive: number;
@@ -77,10 +78,18 @@ export function MatchingTestingPage() {
           userId: 'testing-page-user',
           areaCode: '94105',
           preferredLanguage: 'English',
+          requiredLanguages: [],
+          preferredLanguages: ['English'],
+          languagePriority: 'preferred',
+          culturalContextNeeds: ['no strong preference'],
+          identitySupportNeeds: [],
+          culturePriority: 'low',
           therapyFor: 'Myself',
           carePreference: 'Virtual',
+          paymentPreference: 'not_sure',
           insuranceProvider: 'Aetna',
           therapyTypes: ['anxiety', 'stress_burnout', 'relationship_issues'],
+          modalityPreferenceIds: ['toolsBased', 'valuesActionBased'],
           styleScenarioResponses: STYLE_SCENARIOS.map((scenario) => ({
             scenarioId: scenario.id,
             bestCardId: scenario.cards[1]?.id ?? scenario.cards[0].id,
@@ -156,6 +165,7 @@ export function MatchingTestingPage() {
               <div className="mt-4 grid gap-2 text-sm sm:grid-cols-5">
                 <div>Practical: {pct(match.scoreBreakdown?.practicalFit)}</div>
                 <div>Clinical: {pct(match.scoreBreakdown?.clinicalFit)}</div>
+                <div>Modality: {pct(match.scoreBreakdown?.modalityFit)}</div>
                 <div>Style: {pct(match.scoreBreakdown?.adjustedStyleFit)}</div>
                 <div>Cultural: {pct(match.scoreBreakdown?.culturalLanguageFit)}</div>
                 <div>Data trust: {pct(match.scoreBreakdown?.profileQualityTrust)}</div>

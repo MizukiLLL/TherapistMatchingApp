@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, ExternalLink, Heart, Loader2, Save, Send, Sparkles } from 'lucide-react';
 import { generateTherapistMatches, loadOnboardingState, saveOnboardingState } from '../onboardingApi';
-import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
-import { generateIdealTherapistProfile, legacyProfileToStyleVector, scoreUserStyleScenarios, STYLE_SCENARIOS, styleVectorToLegacyProfile } from '../matching/userStyleScoring';
+import { CnipConversationStyle, ModalityPreferenceId, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
+import { legacyProfileToStyleVector, scoreUserStyleScenarios, STYLE_SCENARIOS, styleVectorToLegacyProfile } from '../matching/userStyleScoring';
+import { generateIdealTherapistProfileFromInputs } from '../matching/idealTherapistProfile';
+import { MODALITY_PREFERENCE_OPTIONS } from '../matching/modalityCheatSheet';
+import { CULTURAL_CONTEXT_OPTIONS, LANGUAGE_OPTIONS, formatBudgetRange } from '../matching/logisticsQuestionnaire';
 import { buildCnipPreferenceProfile } from '../utils/therapistRecommendations';
 import type { PsychologyTodayTherapistProfile, TherapistRecommendation } from '../utils/therapistRecommendations';
 
-type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type Step = number;
 type IntroStage = 'cover' | 'lit' | 'chat';
 type Locale = 'zh-CN' | 'zh-HK' | 'en';
 type LifeAspectCategory = keyof OnboardingFormData['lifeAspectsByCategory'];
@@ -21,14 +24,14 @@ type CnipStyleOption = {
 };
 type SavedTherapistsById = Record<string, PsychologyTodayTherapistProfile>;
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 13;
 const SAVED_THERAPISTS_STORAGE_KEY = 'bettermatch-saved-therapists';
 
-const LIFE_ASPECT_CATEGORY_BY_STEP: Record<4 | 5 | 6 | 7, LifeAspectCategory> = {
-  4: 'symptomsAndDiagnoses',
-  5: 'lifeStagesAndTransitions',
-  6: 'physicalHealthRelatedIssues',
-  7: 'selfIdentityAndSocialRelationships',
+const LIFE_ASPECT_CATEGORY_BY_STEP: Record<1 | 2 | 3 | 4, LifeAspectCategory> = {
+  1: 'symptomsAndDiagnoses',
+  2: 'lifeStagesAndTransitions',
+  3: 'physicalHealthRelatedIssues',
+  4: 'selfIdentityAndSocialRelationships',
 };
 
 function readSavedTherapists(): SavedTherapistsById {
@@ -133,6 +136,20 @@ const EMPTY_FORM: OnboardingFormData = {
     past_focused: 0.5,
     support_focused: 0.5,
   },
+  modalityPreferenceIds: [],
+  logistics: {
+    requiredLanguages: [],
+    preferredLanguages: [],
+    languagePriority: 'flexible',
+    culturalContextNeeds: [],
+    identitySupportNeeds: [],
+    culturePriority: 'low',
+    state: '',
+    radiusMiles: null,
+    paymentPreference: '',
+    budgetRange: '',
+    availability: '',
+  },
 };
 
 const therapyForOptions: Option<Exclude<OnboardingFormData['therapyFor'], ''>>[] = [
@@ -147,6 +164,28 @@ const carePreferenceOptions: Option<Exclude<OnboardingFormData['carePreference']
   { id: 'Virtual', label: { en: 'Online', 'zh-CN': '网上聊', 'zh-HK': '網上傾' } },
   { id: 'Either', label: { en: 'Either is fine', 'zh-CN': '都可以', 'zh-HK': '都可以' } },
 ];
+
+const paymentPreferenceOptions = [
+  { id: 'insurance', label: 'I want to use insurance' },
+  { id: 'out_of_pocket', label: 'I am paying out of pocket' },
+  { id: 'sliding_scale', label: 'I need affordable or sliding-scale options' },
+  { id: 'not_sure', label: 'I am not sure yet' },
+] as const;
+
+const budgetOptions = [
+  { id: 'under_75', label: 'Under $75' },
+  { id: '75_125', label: '$75-$125' },
+  { id: '125_175', label: '$125-$175' },
+  { id: '175_250', label: '$175-$250' },
+  { id: 'flexible', label: 'Flexible' },
+] as const;
+
+const availabilityOptions = [
+  { id: 'asap', label: 'As soon as possible' },
+  { id: '1_2_weeks', label: 'Within 1-2 weeks' },
+  { id: 'within_month', label: 'Within a month' },
+  { id: 'exploring', label: 'I am exploring' },
+] as const;
 
 const commonInsuranceProviders = [
   'Kaiser Permanente',
@@ -314,6 +353,12 @@ const copyByLocale = {
     questionTransitions: 'Are you going through any of these changes?',
     questionPhysical: 'Is any of this tied to your physical health?',
     questionIdentity: 'Is any of this about yourself or your relationships?',
+    questionIdealProfile: 'Here is your Ideal Therapist Profile.',
+    questionLogisticsTransition: "Now let's find real therapists who match this.",
+    questionModalityPreferences: 'What kind of help are you hoping therapy gives you?',
+    questionCulturalContext: "Are there cultural, identity, or life experiences you'd like your therapist to understand?",
+    questionPayment: 'How would you like to handle payment?',
+    questionFinalLogistics: 'A few final matching details.',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP code',
     areaCodeHint: 'Please enter a 5-digit U.S. ZIP code.',
@@ -628,6 +673,24 @@ export function OnboardingFlow() {
   );
   const selectedConcernSample = selectedConcernLabels.length > 0 ? selectedConcernLabels.slice(0, 3).join(', ') : 'what has been feeling hardest lately';
   const cnipSampleQuestion = `I want help with ${selectedConcernSample}. How would you work with me?`;
+  const selectedConcernIds = useMemo(
+    () => (Object.keys(formData.lifeAspectsByCategory) as LifeAspectCategory[]).flatMap((category) => formData.lifeAspectsByCategory[category]),
+    [formData.lifeAspectsByCategory]
+  );
+  const concernNotes = useMemo(
+    () => (Object.keys(formData.lifeAspectNotesByCategory) as LifeAspectCategory[]).map((category) => formData.lifeAspectNotesByCategory[category]),
+    [formData.lifeAspectNotesByCategory]
+  );
+  const idealProfile = useMemo(
+    () =>
+      generateIdealTherapistProfileFromInputs({
+        userStyleVector: formData.userStyleVector,
+        selectedConcerns: selectedConcernIds,
+        freeTextNotes: concernNotes,
+        modalityPreferenceIds: formData.modalityPreferenceIds,
+      }),
+    [concernNotes, formData.modalityPreferenceIds, formData.userStyleVector, selectedConcernIds]
+  );
   const savedTherapistList = useMemo(
     () => (Object.values(savedTherapists) as PsychologyTodayTherapistProfile[]).sort((left, right) => (left.name ?? '').localeCompare(right.name ?? '')),
     [savedTherapists]
@@ -636,15 +699,19 @@ export function OnboardingFlow() {
 
   const questions = useMemo(
     () => [
-      copy.questionLanguage,
-      copy.questionAreaCode,
-      copy.questionTherapyFor,
-      copy.questionCarePreference,
+      copy.questionConversationStyle,
       copy.questionSymptoms,
       copy.questionTransitions,
       copy.questionPhysical,
       copy.questionIdentity,
-      copy.questionConversationStyle,
+      copy.questionModalityPreferences,
+      copy.questionIdealProfile,
+      copy.questionLogisticsTransition,
+      copy.questionLanguage,
+      copy.questionCulturalContext,
+      copy.questionAreaCode,
+      copy.questionPayment,
+      copy.questionFinalLogistics,
     ],
     [copy]
   );
@@ -676,6 +743,8 @@ export function OnboardingFlow() {
             cnipPreferenceProfile,
             styleScenarioResponses,
             userStyleVector,
+            modalityPreferenceIds: saved.data.modalityPreferenceIds ?? [],
+            logistics: { ...EMPTY_FORM.logistics, ...(saved.data.logistics ?? {}) },
           });
           setSavedAt(saved.updatedAt);
         }
@@ -728,39 +797,38 @@ export function OnboardingFlow() {
   }, [copy.intro, currentQuestion, introStage, typedIntro]);
 
   const currentStepValid = useMemo(() => {
-    if (step === 0) return true;
-    if (step === 1) return /^\d{5}$/.test(formData.areaCode.trim());
-    if (step === 2) return formData.therapyFor !== '';
-    if (step === 3) return formData.carePreference !== '' && formData.insuranceProvider.trim().length > 0;
-    if (step >= 4 && step <= 7) {
-      const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 4 | 5 | 6 | 7];
+    if (step === 8) {
+      return STYLE_SCENARIOS.every((scenario) =>
+        formData.styleScenarioResponses.some((response) => response.scenarioId === scenario.id && response.bestCardId)
+      );
+    }
+    if (step >= 1 && step <= 4) {
+      const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 1 | 2 | 3 | 4];
       return (
         formData.lifeAspectsByCategory[category].length > 0 ||
         formData.lifeAspectNotesByCategory[category].trim().length > 0 ||
         formData.lifeAspectSkippedByCategory[category]
       );
     }
-    if (step === 8) {
-      return STYLE_SCENARIOS.every((scenario) =>
-        formData.styleScenarioResponses.some((response) => response.scenarioId === scenario.id && response.bestCardId)
-      );
+    if (step === 5) return formData.modalityPreferenceIds.length > 0 && formData.modalityPreferenceIds.length <= 3;
+    if (step === 6 || step === 7) return true;
+    if (step === 8) return formData.logistics.languagePriority === 'flexible' || [...formData.logistics.requiredLanguages, ...formData.logistics.preferredLanguages].length > 0;
+    if (step === 9) return formData.logistics.culturalContextNeeds.length > 0;
+    if (step === 10) return /^\d{5}$/.test(formData.areaCode.trim()) && formData.carePreference !== '';
+    if (step === 11) {
+      if (!formData.logistics.paymentPreference) return false;
+      if (formData.logistics.paymentPreference === 'insurance') return formData.insuranceProvider.trim().length > 0;
+      if (formData.logistics.paymentPreference === 'out_of_pocket' || formData.logistics.paymentPreference === 'sliding_scale') return formData.logistics.budgetRange !== '';
+      return true;
     }
+    if (step === 12) return formData.therapyFor !== '' && formData.logistics.availability !== '';
     return true;
   }, [formData, step]);
 
   const getAnswerForStep = (targetStep: Step) => {
-    if (targetStep === 0) return copy.languageOptions[formData.preferredLanguage];
-    if (targetStep === 1) return formData.areaCode;
-    if (targetStep === 2 && formData.therapyFor) return getOptionLabel(therapyForOptions, formData.therapyFor, locale);
-    if (targetStep === 3 && formData.carePreference) {
-      const insurance = formData.insuranceProvider.trim();
-      const plan = formData.insurancePlan.trim();
-      return [getOptionLabel(carePreferenceOptions, formData.carePreference, locale), insurance && `Insurance: ${insurance}${plan ? ` ${plan}` : ''}`]
-        .filter(Boolean)
-        .join(' / ');
-    }
-    if (targetStep >= 4 && targetStep <= 7) {
-      const category = LIFE_ASPECT_CATEGORY_BY_STEP[targetStep as 4 | 5 | 6 | 7];
+    if (targetStep === 0) return `${formData.styleScenarioResponses.length} style scenarios completed`;
+    if (targetStep >= 1 && targetStep <= 4) {
+      const category = LIFE_ASPECT_CATEGORY_BY_STEP[targetStep as 1 | 2 | 3 | 4];
       if (formData.lifeAspectSkippedByCategory[category]) return copy.skippedReply;
       const labels = formData.lifeAspectsByCategory[category].map((id) => getOptionLabel(expandedLifeAspectOptions[category], id, locale));
       const note = formData.lifeAspectNotesByCategory[category].trim();
@@ -768,7 +836,26 @@ export function OnboardingFlow() {
       if (labels.length) return labels.join(', ');
       return note;
     }
-    if (targetStep === 8) return `${formData.styleScenarioResponses.length} style scenarios completed`;
+    if (targetStep === 5) return formData.modalityPreferenceIds.map((id) => MODALITY_PREFERENCE_OPTIONS.find((option) => option.id === id)?.title ?? id).join(', ');
+    if (targetStep === 6) return idealProfile.title;
+    if (targetStep === 7) return 'Continue to matching details';
+    if (targetStep === 8) {
+      if (formData.logistics.languagePriority === 'flexible') return 'No strong language preference';
+      return [...formData.logistics.requiredLanguages, ...formData.logistics.preferredLanguages].join(', ');
+    }
+    if (targetStep === 9) return formData.logistics.culturalContextNeeds.join(', ');
+    if (targetStep === 10 && formData.carePreference) return `${formData.areaCode} / ${getOptionLabel(carePreferenceOptions, formData.carePreference, locale)}`;
+    if (targetStep === 11) {
+      const payment = paymentPreferenceOptions.find((option) => option.id === formData.logistics.paymentPreference)?.label ?? '';
+      const insurance = formData.insuranceProvider.trim();
+      const budget = formatBudgetRange(formData.logistics.budgetRange);
+      return [payment, insurance && `Insurance: ${insurance}`, formData.logistics.budgetRange && `Budget: ${budget}`].filter(Boolean).join(' / ');
+    }
+    if (targetStep === 12 && formData.therapyFor) {
+      const therapyFor = getOptionLabel(therapyForOptions, formData.therapyFor, locale);
+      const availability = availabilityOptions.find((option) => option.id === formData.logistics.availability)?.label;
+      return [therapyFor, availability].filter(Boolean).join(' / ');
+    }
     return '';
   };
 
@@ -779,12 +866,12 @@ export function OnboardingFlow() {
 
   const goNext = () => {
     if (!currentStepValid) return;
-    setStep((prev) => (prev < 8 ? ((prev + 1) as Step) : prev));
+    setStep((prev) => (prev < TOTAL_STEPS - 1 ? prev + 1 : prev));
   };
 
   const skipLifeAspectStep = () => {
-    if (step < 4 || step > 7) return;
-    const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 4 | 5 | 6 | 7];
+    if (step < 1 || step > 4) return;
+    const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 1 | 2 | 3 | 4];
     setFormData((prev) => ({
       ...prev,
       lifeAspectsByCategory: {
@@ -800,7 +887,7 @@ export function OnboardingFlow() {
         [category]: true,
       },
     }));
-    setStep((prev) => (prev < 8 ? ((prev + 1) as Step) : prev));
+    setStep((prev) => (prev < TOTAL_STEPS - 1 ? prev + 1 : prev));
   };
 
   const toggleLifeAspect = (category: LifeAspectCategory, lifeAspect: string) => {
@@ -831,6 +918,63 @@ export function OnboardingFlow() {
         ...prev,
         cnipConversationStyles: selected,
         cnipPreferenceProfile: buildCnipPreferenceProfile(selected),
+      };
+    });
+  };
+
+  const toggleModalityPreference = (preferenceId: ModalityPreferenceId) => {
+    setFormData((prev) => {
+      const alreadySelected = prev.modalityPreferenceIds.includes(preferenceId);
+      const next = alreadySelected
+        ? prev.modalityPreferenceIds.filter((entry) => entry !== preferenceId)
+        : prev.modalityPreferenceIds.length >= 3
+          ? prev.modalityPreferenceIds
+          : [...prev.modalityPreferenceIds, preferenceId];
+      return { ...prev, modalityPreferenceIds: next };
+    });
+  };
+
+  const setLanguagePriority = (priority: OnboardingFormData['logistics']['languagePriority']) => {
+    setFormData((prev) => ({
+      ...prev,
+      logistics: {
+        ...prev.logistics,
+        languagePriority: priority,
+        requiredLanguages: priority === 'required' ? prev.logistics.requiredLanguages : [],
+        preferredLanguages: priority === 'preferred' ? prev.logistics.preferredLanguages : [],
+      },
+    }));
+  };
+
+  const toggleLogisticsLanguage = (language: string) => {
+    setFormData((prev) => {
+      const key = prev.logistics.languagePriority === 'required' ? 'requiredLanguages' : 'preferredLanguages';
+      const list = prev.logistics[key];
+      const alreadySelected = list.includes(language);
+      return {
+        ...prev,
+        preferredLanguage: language as PreferredLanguage,
+        logistics: {
+          ...prev.logistics,
+          [key]: alreadySelected ? list.filter((entry) => entry !== language) : [...list, language],
+        },
+      };
+    });
+  };
+
+  const toggleCulturalContext = (value: string) => {
+    setFormData((prev) => {
+      if (value === 'no strong preference') {
+        return { ...prev, logistics: { ...prev.logistics, culturalContextNeeds: ['no strong preference'], culturePriority: 'low' } };
+      }
+      const current = prev.logistics.culturalContextNeeds.filter((entry) => entry !== 'no strong preference');
+      const alreadySelected = current.includes(value);
+      return {
+        ...prev,
+        logistics: {
+          ...prev.logistics,
+          culturalContextNeeds: alreadySelected ? current.filter((entry) => entry !== value) : [...current, value],
+        },
       };
     });
   };
@@ -900,28 +1044,47 @@ export function OnboardingFlow() {
   };
 
   const renderAnswerControls = () => {
-    if (step === 0) {
+    if (step === 8) {
+      const activeLanguageList = formData.logistics.languagePriority === 'required' ? formData.logistics.requiredLanguages : formData.logistics.preferredLanguages;
       return (
-        <div className="flex flex-wrap gap-3">
-          {(['English', 'Mandarin', 'Cantonese'] as PreferredLanguage[]).map((language) => (
-            <button
-              type="button"
-              key={language}
-              onClick={() => setFormData((prev) => ({ ...prev, preferredLanguage: language }))}
-              className={chipClass(formData.preferredLanguage === language)}
-            >
-              {copy.languageOptions[language]}
-              {formData.preferredLanguage === language && <Check className="h-4 w-4" />}
-            </button>
-          ))}
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-3">
+            {[
+              { id: 'required', label: 'Required - I need therapy in this language' },
+              { id: 'preferred', label: 'Preferred - it would help' },
+              { id: 'flexible', label: 'Flexible - no major language factor' },
+            ].map((option) => (
+              <button
+                type="button"
+                key={option.id}
+                onClick={() => setLanguagePriority(option.id as OnboardingFormData['logistics']['languagePriority'])}
+                className={chipClass(formData.logistics.languagePriority === option.id)}
+              >
+                {option.label}
+                {formData.logistics.languagePriority === option.id && <Check className="h-4 w-4" />}
+              </button>
+            ))}
+          </div>
+
+          {formData.logistics.languagePriority !== 'flexible' && (
+            <div className="flex flex-wrap gap-3">
+              {LANGUAGE_OPTIONS.map((language) => (
+                <button type="button" key={language} onClick={() => toggleLogisticsLanguage(language)} className={chipClass(activeLanguageList.includes(language))}>
+                  {language}
+                  {activeLanguageList.includes(language) && <Check className="h-4 w-4" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       );
     }
 
-    if (step === 1) {
+    if (step === 10) {
       const showZipError = formData.areaCode.length > 0 && !currentStepValid;
       return (
-        <div className="w-full max-w-sm">
+        <div className="space-y-5">
+          <div className="w-full max-w-sm">
           <label className="sr-only" htmlFor="area-code">
             {copy.areaCodeLabel}
           </label>
@@ -939,27 +1102,40 @@ export function OnboardingFlow() {
             className="h-14 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-6 text-left text-lg font-medium tracking-[0.08em] text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
           />
           <p className={`mt-2 text-sm ${showZipError ? 'text-red-600' : 'text-[#746c62]'}`}>{copy.areaCodeHint}</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {carePreferenceOptions.map((option) => {
+              const selected = formData.carePreference === option.id;
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() => setFormData((prev) => ({ ...prev, carePreference: option.id as OnboardingFormData['carePreference'] }))}
+                  className={chipClass(selected)}
+                >
+                  {option.label[locale]}
+                  {selected && <Check className="h-4 w-4" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
       );
     }
 
-    const simpleOptions = step === 2 ? therapyForOptions : step === 3 ? carePreferenceOptions : null;
+    const simpleOptions = step === 12 ? therapyForOptions : null;
     if (simpleOptions) {
       return (
         <div className="space-y-5">
           <div className="flex flex-wrap gap-3">
             {simpleOptions.map((option) => {
-              const selected = step === 2 ? formData.therapyFor === option.id : formData.carePreference === option.id;
+              const selected = formData.therapyFor === option.id;
               return (
                 <button
                   type="button"
                   key={option.id}
                   onClick={() =>
-                    setFormData((prev) =>
-                      step === 2
-                        ? { ...prev, therapyFor: option.id as OnboardingFormData['therapyFor'] }
-                        : { ...prev, carePreference: option.id as OnboardingFormData['carePreference'] }
-                    )
+                    setFormData((prev) => ({ ...prev, therapyFor: option.id as OnboardingFormData['therapyFor'] }))
                   }
                   className={chipClass(selected)}
                 >
@@ -969,7 +1145,23 @@ export function OnboardingFlow() {
               );
             })}
           </div>
-          {step === 3 && (
+          <div className="flex flex-wrap gap-3">
+            {availabilityOptions.map((option) => {
+              const selected = formData.logistics.availability === option.id;
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, availability: option.id } }))}
+                  className={chipClass(selected)}
+                >
+                  {option.label}
+                  {selected && <Check className="h-4 w-4" />}
+                </button>
+              );
+            })}
+          </div>
+          {false && (
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insuranceProviderLabel ?? copyByLocale.en.insuranceProviderLabel}</span>
@@ -1052,7 +1244,7 @@ export function OnboardingFlow() {
       );
     }
 
-    if (step === 8) {
+    if (step === 0) {
       return (
         <div className="space-y-6">
           <p className="text-sm font-medium text-[#746c62]">{copy.styleHint}</p>
@@ -1111,7 +1303,206 @@ export function OnboardingFlow() {
       );
     }
 
-    const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 4 | 5 | 6 | 7];
+    if (step === 5) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm font-medium leading-6 text-[#746c62]">You do not need to know therapy terms. Choose up to 3 that sound closest.</p>
+          <div className="grid gap-3">
+            {MODALITY_PREFERENCE_OPTIONS.map((option) => {
+              const selected = formData.modalityPreferenceIds.includes(option.id as ModalityPreferenceId);
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() => toggleModalityPreference(option.id as ModalityPreferenceId)}
+                  className={[
+                    'rounded-[16px] border bg-[#fffdf8] p-4 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
+                    selected ? 'border-[#6e7b64] ring-2 ring-[#6e7b64]/25' : 'border-[#e1d8c9] hover:border-[#7a866f]',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-[#40382f]">{option.title}</p>
+                      <p className="mt-2 text-sm leading-6 text-[#746c62]">{option.copy}</p>
+                    </div>
+                    {selected && <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#6e7b64]" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    if (step === 6) {
+      return (
+        <div className="space-y-5 rounded-[20px] border border-[#d8d0c2] bg-[#fffdf8] p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Ideal Therapist Profile</p>
+            <h3 className="mt-2 text-2xl font-semibold text-[#332d28]">{idealProfile.title}</h3>
+            <p className="mt-3 text-sm leading-6 text-[#746c62]">{idealProfile.summary}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">Main concerns</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {idealProfile.mainConcerns.map((concern) => (
+                  <span key={concern} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-semibold text-[#62594f]">{concern}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">Conversation style</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {idealProfile.preferredConversationStyle.map((trait) => (
+                  <span key={trait} className="rounded-full bg-[#dfe7d8] px-3 py-1 text-xs font-semibold text-[#53614d]">{trait}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">Recommended therapy approaches</p>
+            <div className="mt-3 grid gap-2">
+              {idealProfile.recommendedModalities.slice(0, 4).map((modality) => (
+                <div key={modality.modalityId} className="rounded-[8px] bg-[#f7f2e8] p-3">
+                  <p className="font-semibold text-[#40382f]">{modality.displayName}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#746c62]">{modality.explanation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (step === 7) {
+      return (
+        <div className="rounded-[20px] border border-[#d8d0c2] bg-[#fffdf8] p-5">
+          <h3 className="text-2xl font-semibold text-[#332d28]">Now let's find real therapists who match this.</h3>
+          <p className="mt-3 text-sm leading-6 text-[#746c62]">
+            Your profile shows the kind of therapy support that may fit you. Next, we will ask a few practical questions - like language,
+            location, insurance, and session format - so we can match you with therapists who are actually available and accessible.
+          </p>
+        </div>
+      );
+    }
+
+    if (step === 9) {
+      return (
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-3">
+            {CULTURAL_CONTEXT_OPTIONS.map((option) => {
+              const selected = formData.logistics.culturalContextNeeds.includes(option);
+              return (
+                <button type="button" key={option} onClick={() => toggleCulturalContext(option)} className={chipClass(selected)}>
+                  {option}
+                  {selected && <Check className="h-4 w-4" />}
+                </button>
+              );
+            })}
+          </div>
+          {!formData.logistics.culturalContextNeeds.includes('no strong preference') && (
+            <div className="flex flex-wrap gap-3">
+              {[
+                { id: 'high', label: 'High - strongly shape my matches' },
+                { id: 'medium', label: 'Medium - it matters' },
+                { id: 'low', label: 'Low - nice to have' },
+              ].map((option) => (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, culturePriority: option.id as OnboardingFormData['logistics']['culturePriority'] } }))}
+                  className={chipClass(formData.logistics.culturePriority === option.id)}
+                >
+                  {option.label}
+                  {formData.logistics.culturePriority === option.id && <Check className="h-4 w-4" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (step === 11) {
+      return (
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-3">
+            {paymentPreferenceOptions.map((option) => {
+              const selected = formData.logistics.paymentPreference === option.id;
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      insuranceProvider: option.id === 'insurance' ? prev.insuranceProvider : '',
+                      insurancePlan: option.id === 'insurance' ? prev.insurancePlan : '',
+                      logistics: { ...prev.logistics, paymentPreference: option.id, budgetRange: option.id === 'out_of_pocket' || option.id === 'sliding_scale' ? prev.logistics.budgetRange : '' },
+                    }))
+                  }
+                  className={chipClass(selected)}
+                >
+                  {option.label}
+                  {selected && <Check className="h-4 w-4" />}
+                </button>
+              );
+            })}
+          </div>
+          {formData.logistics.paymentPreference === 'insurance' && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insuranceProviderLabel ?? copyByLocale.en.insuranceProviderLabel}</span>
+                <input
+                  type="text"
+                  list="insurance-provider-options"
+                  value={formData.insuranceProvider}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, insuranceProvider: event.target.value }))}
+                  placeholder={copy.insuranceProviderPlaceholder ?? copyByLocale.en.insuranceProviderPlaceholder}
+                  className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
+                />
+                <datalist id="insurance-provider-options">
+                  {commonInsuranceProviders.map((provider) => <option key={provider} value={provider} />)}
+                </datalist>
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insurancePlanLabel ?? copyByLocale.en.insurancePlanLabel}</span>
+                <input
+                  type="text"
+                  list="insurance-plan-options"
+                  value={formData.insurancePlan}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, insurancePlan: event.target.value }))}
+                  placeholder={copy.insurancePlanPlaceholder ?? copyByLocale.en.insurancePlanPlaceholder}
+                  className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
+                />
+                <datalist id="insurance-plan-options">
+                  {commonInsurancePlans.map((plan) => <option key={plan} value={plan} />)}
+                </datalist>
+              </label>
+            </div>
+          )}
+          {(formData.logistics.paymentPreference === 'out_of_pocket' || formData.logistics.paymentPreference === 'sliding_scale') && (
+            <div className="flex flex-wrap gap-3">
+              {budgetOptions.map((option) => (
+                <button
+                  type="button"
+                  key={option.id}
+                  onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, budgetRange: option.id } }))}
+                  className={chipClass(formData.logistics.budgetRange === option.id)}
+                >
+                  {option.label}
+                  {formData.logistics.budgetRange === option.id && <Check className="h-4 w-4" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 1 | 2 | 3 | 4];
     return (
       <div className="w-full">
         <div className="flex flex-wrap gap-3">
@@ -1151,8 +1542,6 @@ export function OnboardingFlow() {
   };
 
   if (showRecommendations) {
-    const idealProfile = generateIdealTherapistProfile(formData.userStyleVector);
-
     return (
       <main className="min-h-screen bg-[#efe7d7] text-[#332d28]">
         <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-6 sm:px-6">
@@ -1181,11 +1570,35 @@ export function OnboardingFlow() {
               <h2 className="mt-2 text-2xl font-semibold text-[#332d28]">{idealProfile.title}</h2>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#746c62]">{idealProfile.summary}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {idealProfile.preferredTraits.map((trait) => (
+                {idealProfile.preferredConversationStyle.map((trait) => (
                   <span key={trait} className="rounded-full bg-[#dfe7d8] px-3 py-1 text-xs font-semibold text-[#53614d]">
                     {trait}
                   </span>
                 ))}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">Main concerns</p>
+                  <p className="mt-1 text-sm leading-6 text-[#40382f]">{idealProfile.mainConcerns.slice(0, 4).join(', ')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">Recommended modalities</p>
+                  <p className="mt-1 text-sm leading-6 text-[#40382f]">{idealProfile.recommendedModalities.slice(0, 3).map((modality) => modality.displayName).join(', ') || 'Confirm approach in consultation'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">Style</p>
+                  <p className="mt-1 text-sm leading-6 text-[#40382f]">{idealProfile.preferredConversationStyle.slice(0, 3).join(', ')}</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[20px] border border-[#d8d0c2] bg-[#fffdf8] p-5 shadow-[0_16px_34px_rgba(97,86,68,0.06)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Matching details</p>
+              <div className="mt-3 grid gap-3 text-sm leading-6 text-[#40382f] sm:grid-cols-2">
+                <p><span className="font-semibold">Language:</span> {formData.logistics.languagePriority === 'flexible' ? 'No strong preference' : [...formData.logistics.requiredLanguages, ...formData.logistics.preferredLanguages].join(', ')}</p>
+                <p><span className="font-semibold">Location/session:</span> ZIP {formData.areaCode || 'not set'} / {formData.carePreference || 'not set'}</p>
+                <p><span className="font-semibold">Payment:</span> {paymentPreferenceOptions.find((option) => option.id === formData.logistics.paymentPreference)?.label ?? 'Not sure'}{formData.insuranceProvider ? ` / ${formData.insuranceProvider}` : ''}</p>
+                <p><span className="font-semibold">Context:</span> {formData.logistics.culturalContextNeeds.join(', ') || 'No strong preference'}</p>
               </div>
             </section>
 
@@ -1542,7 +1955,7 @@ export function OnboardingFlow() {
                     {status === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   </button>
 
-                  {step < 8 ? (
+                  {step < TOTAL_STEPS - 1 ? (
                     <button
                       type="button"
                       onClick={goNext}

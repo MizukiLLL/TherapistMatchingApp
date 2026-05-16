@@ -1,13 +1,16 @@
 import { countTagMatches, normalizeConcernTags } from './clinicalTagNormalizer.ts';
 import { MATCHING_WEIGHTS, STYLE_FIT_WEIGHTS } from './matchingConfig.ts';
 import { buildMatchExplanation } from './matchExplanation.ts';
-import type { IlluminMatchResult, NormalizedTherapistProfile, StyleVector } from './matchingTypes.ts';
+import type { IlluminMatchResult, NormalizedTherapistProfile, RecommendedModality, StyleVector } from './matchingTypes.ts';
 import { applyHardFilters, scorePracticalFit, type PracticalFitInput } from './practicalFitScoring.ts';
+import { scoreModalityFit } from './modalityFitScoring.ts';
+import { scoreCulturalLanguageFromLogistics } from './culturalLanguageLogistics.ts';
 
 export type AlgorithmInput = PracticalFitInput & {
   userConcernTags: string[];
   rawUserConcerns: string[];
   userStyleVector: StyleVector;
+  recommendedModalities?: RecommendedModality[];
 };
 
 function round2(value: number): number {
@@ -44,12 +47,11 @@ export function scoreStyleFit(user: StyleVector, therapist: NormalizedTherapistP
 }
 
 export function scoreCulturalLanguageFit(input: AlgorithmInput, therapist: NormalizedTherapistProfile): number {
-  const preferred = (input.preferredLanguage ?? '').toLocaleLowerCase();
-  const exactLanguageFit = preferred && therapist.practical.languages.some((language) => language.toLocaleLowerCase() === preferred) ? 1 : preferred ? 0 : 0.7;
-  const text = therapist.sourceText.toLocaleLowerCase();
-  const culturalExperienceFit = /asian|asian american|immigrant|bicultural|international students|first-generation|culturally responsive|culturally sensitive|chinese|mandarin|cantonese/.test(text) ? 1 : 0.3;
-  const identityPopulationFit = therapist.normalized_tags.communities.some((tag) => ['immigration_bicultural', 'identity'].includes(tag)) ? 1 : 0.4;
-  return clamp01(0.6 * exactLanguageFit + 0.25 * culturalExperienceFit + 0.15 * identityPopulationFit);
+  return scoreCulturalLanguageFromLogistics(input, {
+    languages: therapist.practical.languages,
+    sourceText: therapist.sourceText,
+    communities: therapist.normalized_tags.communities,
+  });
 }
 
 function practicalSummary(input: AlgorithmInput, therapist: NormalizedTherapistProfile): string[] {
@@ -74,11 +76,14 @@ export function rankTherapists(input: AlgorithmInput, therapists: NormalizedTher
     .map(({ therapist }) => {
       const practicalFit = scorePracticalFit(therapist, input).score;
       const clinical = scoreClinicalFit(userTags, therapist);
+      const modality = scoreModalityFit(therapist, input.recommendedModalities ?? []);
       const style = scoreStyleFit(input.userStyleVector, therapist);
       const culturalLanguageFit = scoreCulturalLanguageFit(input, therapist);
       const finalScore =
         MATCHING_WEIGHTS.practicalFit * practicalFit +
         MATCHING_WEIGHTS.clinicalFit * clinical.score +
+        MATCHING_WEIGHTS.modalityFit * modality.score +
+        MATCHING_WEIGHTS.culturalLanguageFit * culturalLanguageFit +
         MATCHING_WEIGHTS.adjustedStyleFit * style.adjustedStyleFit +
         MATCHING_WEIGHTS.profileQualityTrust * therapist.profile_quality_trust;
 
@@ -89,6 +94,7 @@ export function rankTherapists(input: AlgorithmInput, therapists: NormalizedTher
         scoreBreakdown: {
           practicalFit: round2(practicalFit),
           clinicalFit: round2(clinical.score),
+          modalityFit: round2(modality.score),
           adjustedStyleFit: round2(style.adjustedStyleFit),
           culturalLanguageFit: round2(culturalLanguageFit),
           profileQualityTrust: round2(therapist.profile_quality_trust),
@@ -98,6 +104,7 @@ export function rankTherapists(input: AlgorithmInput, therapists: NormalizedTher
         explanation: buildMatchExplanation({
           therapist,
           matchedClinicalTags: clinical.matchedTags,
+          matchedModalities: modality.matchedModalities,
           practicalSummary: practicalSummary(input, therapist),
           styleFit: style.adjustedStyleFit,
           culturalLanguageFit,

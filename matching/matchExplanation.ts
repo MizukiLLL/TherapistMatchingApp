@@ -10,21 +10,24 @@ function stylePhrase(vector: NormalizedTherapistProfile['style_vector']): string
 export function buildMatchExplanation(input: {
   therapist: NormalizedTherapistProfile;
   matchedClinicalTags: string[];
+  matchedModalities?: string[];
   practicalSummary: string[];
   styleFit: number;
   culturalLanguageFit: number;
 }): MatchExplanation {
   const bullets = [
-    ...input.practicalSummary.slice(0, 2),
     input.matchedClinicalTags.length > 0
       ? `Works with concerns related to ${input.matchedClinicalTags.slice(0, 3).join(', ')}.`
       : 'Has a profile that may still be worth reviewing, though concern overlap is limited.',
+    input.matchedModalities?.length
+      ? `Offers therapy approaches that match your profile, including ${input.matchedModalities.slice(0, 3).join(', ')}.`
+      : 'Therapy approach fit is worth confirming in consultation.',
+    ...input.practicalSummary.slice(0, 2),
+    input.culturalLanguageFit >= 0.75
+      ? 'May match your language, cultural, or context preferences based on listed details.'
+      : 'Language or cultural context fit may need confirmation.',
     `Their profile suggests a ${stylePhrase(input.therapist.style_vector)} conversation style.`,
   ];
-
-  if (input.culturalLanguageFit >= 0.75) {
-    bullets.push('May offer meaningful language or cultural fit based on listed profile details.');
-  }
 
   return {
     headline: 'Why this therapist may fit you',

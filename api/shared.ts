@@ -69,6 +69,11 @@ function overlap(left: string[], right: string[]): string[] {
   return left.filter((value) => rightSet.has(value.toLowerCase()));
 }
 
+function textMatchesAny(text: string, values: string[]): boolean {
+  const normalizedText = text.toLowerCase();
+  return values.some((value) => normalizedText.includes(value.toLowerCase()));
+}
+
 function publicTherapist(therapist: TherapistRecord) {
   const { insurance: _insurance, ...publicRecord } = therapist;
   return publicRecord;
@@ -98,21 +103,33 @@ export function generateIdealProfile(body: Record<string, unknown>) {
   const intensive = vector.emotionally_intensive >= 0.58;
   const past = vector.past_focused >= 0.55;
   const supportive = vector.support_focused >= 0.58;
+  const mainConcerns = stringList(body.therapyTypes).slice(0, 6);
+  const modalityPreferenceIds = stringList(body.modalityPreferenceIds);
+  const recommendedModalities = modalityPreferenceIds.length
+    ? modalityPreferenceIds.slice(0, 4).map((id) => ({
+        modalityId: id,
+        displayName: id === 'toolsBased' ? 'CBT' : id === 'valuesActionBased' ? 'ACT' : id === 'traumaProcessing' ? 'Trauma-informed therapy' : id === 'relationshipFocused' ? 'IPT' : id === 'somaticRegulation' ? 'Somatic therapy' : id === 'culturallyResponsive' ? 'Culturally responsive therapy' : id === 'neurodiversityAffirming' ? 'Neurodiversity-affirming therapy' : 'Insight-oriented therapy',
+        explanation: 'May be helpful based on the kind of therapy support you selected.',
+        reason: 'Selected in the therapy work-style preferences.',
+      }))
+    : [];
+  const preferredConversationStyle = [
+    supportive ? 'warm and validating' : 'honest and growth-oriented',
+    directive ? 'gently structured' : 'collaborative and client-led',
+    intensive ? 'comfortable with deeper emotions' : 'emotionally steady',
+    past ? 'open to exploring deeper patterns' : 'present-focused',
+  ];
 
   return {
-    title: `${supportive ? 'Warm' : 'Growth-oriented'}, ${directive ? 'structured' : 'collaborative'}, and ${intensive ? 'emotionally attuned' : 'steady'}`,
-    summary: `Your preferences suggest you may work best with a therapist who ${supportive ? 'helps you feel understood' : 'can be honest and growth-focused'} while also ${directive ? 'offering clear direction and next steps' : 'letting the pace feel collaborative'}.`,
-    preferredTraits: [
-      supportive ? 'Supportive and validating' : 'Honest and growth-focused',
-      directive ? 'Gently directive' : 'Collaborative and client-led',
-      intensive ? 'Comfortable with deeper emotions' : 'Emotionally steady',
-      past ? 'Open to exploring deeper patterns' : 'Present-focused and practical',
-    ],
-    lessHelpfulTraits: [
-      supportive ? 'Overly confrontational too early' : 'Only validating without helping you shift patterns',
-      directive ? 'Too open-ended without structure' : 'Too directive before trust is built',
-      intensive ? 'Staying only on surface-level tips' : 'Diving too deeply too fast',
-    ],
+    title: `${supportive ? 'Warm' : 'Growth-oriented'}, ${directive ? 'practical' : 'collaborative'} support${past ? ' with room for deeper understanding' : ' for what is happening now'}`,
+    summary: `Based on your answers, you may benefit from a therapist who offers ${preferredConversationStyle.slice(0, 2).join(' and ')} support${mainConcerns.length ? ` while helping with ${mainConcerns.slice(0, 3).join(', ')}` : ''}.`,
+    mainConcerns: mainConcerns.length ? mainConcerns : ['what has been feeling hardest lately'],
+    preferredConversationStyle,
+    recommendedModalities,
+    whatToLookFor: ['A therapist who explains their approach clearly', 'A therapist who balances listening with practical guidance', 'A therapist who can connect emotions, patterns, and next steps'],
+    consultationQuestions: ['How do you usually support clients with my main concerns?', 'What therapy approaches do you tend to use?', 'How do you balance emotional support with practical tools?', 'What does a first session with you usually feel like?'],
+    preferredTraits: preferredConversationStyle,
+    lessHelpfulTraits: [supportive ? 'Overly confrontational too early' : 'Only validating without helping you shift patterns'],
     userStyleVector: vector,
   };
 }
@@ -128,17 +145,43 @@ export function generateMatches(body: Record<string, unknown>) {
       const insurancePlan = normalize(body.insurancePlan);
       const carePreference = normalize(body.carePreference).toLowerCase();
       const preferredLanguage = normalize(body.preferredLanguage);
+      const requiredLanguages = stringList(body.requiredLanguages);
+      const preferredLanguages = stringList(body.preferredLanguages);
+      const languagePriority = normalize(body.languagePriority) || 'preferred';
+      const paymentPreference = normalize(body.paymentPreference);
+      const culturalContextNeeds = stringList(body.culturalContextNeeds).filter((value) => value.toLowerCase() !== 'no strong preference');
+      const modalityPreferenceIds = stringList(body.modalityPreferenceIds);
       const matchedTherapyTypes = overlap(therapist.therapyTypes, therapyTypes);
-      const matchedTherapyModels = overlap(therapist.therapyModels, therapyTypes);
+      const modelTargets = modalityPreferenceIds.flatMap((id) => {
+        if (id === 'toolsBased') return ['CBT', 'DBT', 'Solution-Focused'];
+        if (id === 'insightBased') return ['Psychodynamic', 'Insight', 'Attachment'];
+        if (id === 'traumaProcessing') return ['EMDR', 'Trauma', 'Somatic'];
+        if (id === 'relationshipFocused') return ['IPT', 'Family Systems', 'EFT', 'Gottman'];
+        if (id === 'valuesActionBased') return ['ACT', 'CBT', 'Behavioral Activation'];
+        if (id === 'somaticRegulation') return ['Somatic', 'Mindfulness', 'DBT'];
+        if (id === 'culturallyResponsive') return ['Culturally Responsive', 'Narrative', 'Family Systems'];
+        if (id === 'neurodiversityAffirming') return ['Neurodiversity', 'ADHD', 'Autism', 'CBT', 'DBT'];
+        return [];
+      });
+      const therapistModelText = `${therapist.therapyModels.join(' ')} ${therapist.bio}`;
+      const matchedTherapyModels = modelTargets.length > 0 ? modelTargets.filter((model) => textMatchesAny(therapistModelText, [model])) : overlap(therapist.therapyModels, therapyTypes);
       const matchingInsurance = therapist.insurance.filter((insurance) => {
         if (!insurance.acceptingNewPatients || !insuranceProvider) return false;
         if (insurance.provider.toLowerCase() !== insuranceProvider.toLowerCase()) return false;
         if (!insurancePlan) return true;
         return (insurance.plan ?? '').toLowerCase() === insurancePlan.toLowerCase();
       });
+      if (languagePriority === 'required' && requiredLanguages.length > 0 && !requiredLanguages.some((language) => therapist.languages.some((listed) => listed.toLowerCase() === language.toLowerCase() || (/mandarin|cantonese|chinese/i.test(language) && /mandarin|cantonese|chinese/i.test(listed))))) {
+        return null;
+      }
+      if (paymentPreference === 'insurance' && insuranceProvider && matchingInsurance.length === 0) {
+        return null;
+      }
       const areaScore = areaCode && therapist.areaCodesServed.includes(areaCode) ? 100 : 45;
       const expertiseScore = therapyTypes.length === 0 ? 65 : Math.round((matchedTherapyTypes.length / therapyTypes.length) * 100);
-      const languageScore = !preferredLanguage || therapist.languages.some((language) => language.toLowerCase() === preferredLanguage.toLowerCase()) ? 100 : 70;
+      const languageTargets = [...requiredLanguages, ...preferredLanguages, preferredLanguage].filter(Boolean);
+      const languageScore = languageTargets.length === 0 || languagePriority === 'flexible' ? 75 : languageTargets.some((target) => therapist.languages.some((language) => language.toLowerCase() === target.toLowerCase())) ? 100 : 45;
+      const culturalLanguageFit = culturalContextNeeds.length === 0 ? round2(languageScore / 100) : round2((languageScore * 0.65 + (textMatchesAny(`${therapist.bio} ${therapist.therapyTypes.join(' ')}`, culturalContextNeeds) ? 100 : 40) * 0.35) / 100);
       const sessionFormatScore =
         !carePreference || carePreference === 'either'
           ? 85
@@ -147,14 +190,18 @@ export function generateMatches(body: Record<string, unknown>) {
             : therapist.inPersonAvailable ? 100 : 30;
       const insuranceScore = !insuranceProvider ? 60 : matchingInsurance.length > 0 ? 100 : 35;
       const cnipScore = 72;
-      const therapyModelScore = matchedTherapyModels.length > 0 ? 100 : 60;
-      const finalScore = Math.round(expertiseScore * 0.32 + languageScore * 0.14 + sessionFormatScore * 0.14 + areaScore * 0.14 + insuranceScore * 0.1 + cnipScore * 0.1 + therapyModelScore * 0.06);
-      const insuranceLabel = insurancePlan ? `${insuranceProvider} ${insurancePlan}` : insuranceProvider;
-      const practicalFit = round2((languageScore * 0.3 + insuranceScore * 0.25 + sessionFormatScore * 0.2 + 75 * 0.15 + 75 * 0.1) / 100);
-      const clinicalFit = round2(expertiseScore / 100);
-      const adjustedStyleFit = round2(cnipScore / 100);
-      const culturalLanguageFit = round2(languageScore / 100);
+      const therapyModelScore = modelTargets.length === 0 ? 65 : matchedTherapyModels.length > 0 ? 100 : 35;
+      const practicalFitRaw = (languageScore * 0.3 + insuranceScore * 0.25 + sessionFormatScore * 0.2 + 75 * 0.15 + 75 * 0.1) / 100;
+      const clinicalFitRaw = expertiseScore / 100;
+      const modalityFitRaw = therapyModelScore / 100;
+      const styleFitRaw = cnipScore / 100;
       const profileQualityTrust = 0.7;
+      const finalScore = Math.round(100 * (0.3 * practicalFitRaw + 0.25 * clinicalFitRaw + 0.23 * modalityFitRaw + 0.12 * culturalLanguageFit + 0.07 * styleFitRaw + 0.03 * profileQualityTrust));
+      const insuranceLabel = insurancePlan ? `${insuranceProvider} ${insurancePlan}` : insuranceProvider;
+      const practicalFit = round2(practicalFitRaw);
+      const clinicalFit = round2(clinicalFitRaw);
+      const modalityFit = round2(modalityFitRaw);
+      const adjustedStyleFit = round2(cnipScore / 100);
 
       return {
         id: `match-${normalize(body.userId) || 'anonymous'}-${therapist.id}-${Date.now()}`,
@@ -174,6 +221,7 @@ export function generateMatches(body: Record<string, unknown>) {
         scoreBreakdown: {
           practicalFit,
           clinicalFit,
+          modalityFit,
           adjustedStyleFit,
           culturalLanguageFit,
           profileQualityTrust,
@@ -185,6 +233,7 @@ export function generateMatches(body: Record<string, unknown>) {
           bullets: [
             sessionFormatScore >= 85 ? 'Offers a compatible session format.' : 'Session format should be confirmed before booking.',
             matchedTherapyTypes.length > 0 ? `Works with concerns related to ${matchedTherapyTypes.slice(0, 3).join(', ')}.` : 'Has a profile that may still be worth reviewing, though concern overlap is limited.',
+            matchedTherapyModels.length > 0 ? `Offers therapy approaches that match your profile, including ${matchedTherapyModels.slice(0, 3).join(', ')}.` : 'Therapy approach fit is worth confirming in consultation.',
             'Their profile gives some clues about communication style, but this should be confirmed in a consultation.',
           ],
           confidenceNote: 'Their profile gives some clues about communication style, but this should be confirmed in a consultation.',
@@ -210,5 +259,6 @@ export function generateMatches(body: Record<string, unknown>) {
         ranked_at: new Date().toISOString(),
       };
     })
+    .filter((match): match is NonNullable<typeof match> => match !== null)
     .sort((a, b) => b.final_score - a.final_score || a.therapist.fullName.localeCompare(b.therapist.fullName));
 }
