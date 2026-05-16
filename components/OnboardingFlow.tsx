@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, Check, ExternalLink, Heart, Loader2, Save, Send,
 import { generateTherapistMatches, loadOnboardingState, saveOnboardingState } from '../onboardingApi';
 import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
 import { generateIdealTherapistProfile, legacyProfileToStyleVector, scoreUserStyleScenarios, STYLE_SCENARIOS, styleVectorToLegacyProfile } from '../matching/userStyleScoring';
-import { buildCnipPreferenceProfile, cnipStyleNames, recommendTherapists } from '../utils/therapistRecommendations';
+import { buildCnipPreferenceProfile } from '../utils/therapistRecommendations';
 import type { PsychologyTodayTherapistProfile, TherapistRecommendation } from '../utils/therapistRecommendations';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
@@ -869,12 +869,7 @@ export function OnboardingFlow() {
     setErrorMessage('');
     try {
       const saved = await saveOnboardingState(formData);
-      let generatedRecommendations: TherapistRecommendation[];
-      try {
-        generatedRecommendations = await generateTherapistMatches(formData, saved.userId);
-      } catch {
-        generatedRecommendations = recommendTherapists(formData);
-      }
+      const generatedRecommendations = await generateTherapistMatches(formData, saved.userId);
       setRecommendations(generatedRecommendations);
       setSavedAt(saved.updatedAt);
       setStatus('saved');
