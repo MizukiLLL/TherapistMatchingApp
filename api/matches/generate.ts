@@ -1,4 +1,4 @@
-import { generateMatches, normalize, readJsonBody, sendJson } from '../shared.js';
+import { generateIdealProfile, generateMatches, normalize, readJsonBody, sendJson } from '../shared.js';
 
 export default async function handler(request: any, response: any) {
   if (request.method !== 'POST') {
@@ -15,6 +15,7 @@ export default async function handler(request: any, response: any) {
       total: data.length,
       generatedAt: new Date().toISOString(),
       productionFallback: true,
+      userIdealProfile: generateIdealProfile(body),
     },
   });
 }
