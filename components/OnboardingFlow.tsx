@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, Loader2, Save, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ExternalLink, Heart, Loader2, Save, Send, Sparkles } from 'lucide-react';
 import { generateTherapistMatches, loadOnboardingState, saveOnboardingState } from '../onboardingApi';
 import { CnipConversationStyle, OnboardingFormData, PreferredLanguage } from '../onboardingTypes';
-import { buildCnipPreferenceProfile, cnipStyleNames } from '../utils/therapistRecommendations';
-import type { TherapistRecommendation } from '../utils/therapistRecommendations';
+import { generateIdealTherapistProfile, legacyProfileToStyleVector, scoreUserStyleScenarios, STYLE_SCENARIOS, styleVectorToLegacyProfile } from '../matching/userStyleScoring';
+import { buildCnipPreferenceProfile, cnipStyleNames, recommendTherapists } from '../utils/therapistRecommendations';
+import type { PsychologyTodayTherapistProfile, TherapistRecommendation } from '../utils/therapistRecommendations';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 type IntroStage = 'cover' | 'lit' | 'chat';
@@ -18,8 +19,10 @@ type CnipStyleOption = {
   sampleResponse: (concerns: string) => string;
   traits: string[];
 };
+type SavedTherapistsById = Record<string, PsychologyTodayTherapistProfile>;
 
 const TOTAL_STEPS = 9;
+const SAVED_THERAPISTS_STORAGE_KEY = 'bettermatch-saved-therapists';
 
 const LIFE_ASPECT_CATEGORY_BY_STEP: Record<4 | 5 | 6 | 7, LifeAspectCategory> = {
   4: 'symptomsAndDiagnoses',
@@ -27,6 +30,68 @@ const LIFE_ASPECT_CATEGORY_BY_STEP: Record<4 | 5 | 6 | 7, LifeAspectCategory> = 
   6: 'physicalHealthRelatedIssues',
   7: 'selfIdentityAndSocialRelationships',
 };
+
+function readSavedTherapists(): SavedTherapistsById {
+  if (typeof window === 'undefined') return {};
+
+  const rawValue = window.localStorage.getItem(SAVED_THERAPISTS_STORAGE_KEY);
+  if (!rawValue) return {};
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed as SavedTherapistsById).filter(
+        ([id, therapist]) =>
+          id &&
+          therapist &&
+          typeof therapist === 'object' &&
+          typeof therapist.id === 'string' &&
+          typeof therapist.name === 'string' &&
+          typeof therapist.credentials === 'string'
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeSavedTherapists(savedTherapists: SavedTherapistsById): void {
+  try {
+    window.localStorage.setItem(SAVED_THERAPISTS_STORAGE_KEY, JSON.stringify(savedTherapists));
+  } catch {
+    // Saving a shortlist should not block match results.
+  }
+}
+
+function joinOrFallback(values: string[] | undefined, fallback: string): string {
+  return values?.length ? values.join(', ') : fallback;
+}
+
+function getTherapistSessionText(therapist: PsychologyTodayTherapistProfile): string {
+  return therapist.sessionFormats?.length ? therapist.sessionFormats.map((format) => (format === 'InPerson' ? 'In person' : 'Virtual')).join(' + ') : 'Confirm with therapist';
+}
+
+function getTherapistInsuranceText(therapist: PsychologyTodayTherapistProfile): string {
+  if (therapist.matchingInsurance?.length) {
+    return therapist.matchingInsurance.map((insurance) => `${insurance.provider}${insurance.plan ? ` ${insurance.plan}` : ''}`).join(', ');
+  }
+
+  return therapist.insuranceProviders?.length ? therapist.insuranceProviders.join(', ') : 'Confirm with therapist';
+}
+
+function getTherapistRateText(therapist: PsychologyTodayTherapistProfile): string {
+  if (therapist.hourlyRateMin && therapist.hourlyRateMax) return `$${therapist.hourlyRateMin}-$${therapist.hourlyRateMax}/session`;
+  if (therapist.hourlyRateMin) return `From $${therapist.hourlyRateMin}/session`;
+  return 'Rate not listed';
+}
+
+function getStyleFitLabel(styleFit: number): string {
+  if (styleFit >= 85) return 'Strong conversation style fit';
+  if (styleFit >= 70) return 'Good conversation style fit';
+  return 'Possible conversation style fit';
+}
 
 const emptyLifeAspectSelections: OnboardingFormData['lifeAspectsByCategory'] = {
   symptomsAndDiagnoses: [],
@@ -61,6 +126,13 @@ const EMPTY_FORM: OnboardingFormData = {
   insurancePlan: '',
   cnipConversationStyles: [],
   cnipPreferenceProfile: buildCnipPreferenceProfile([]),
+  styleScenarioResponses: [],
+  userStyleVector: {
+    therapist_directive: 0.5,
+    emotionally_intensive: 0.5,
+    past_focused: 0.5,
+    support_focused: 0.5,
+  },
 };
 
 const therapyForOptions: Option<Exclude<OnboardingFormData['therapyFor'], ''>>[] = [
@@ -256,14 +328,14 @@ const copyByLocale = {
     insuranceHint: 'Insurance helps us rank coverage, but we will still show the best available matches if you skip it.',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
-    recommendationsSubtitle: 'Ranked by C-NIP style fit, profile expertise, language, location, session format, and insurance match.',
+    recommendationsSubtitle: 'Focused on conversation style fit and recommended therapy models.',
     recommendationSource: 'Backend therapist profiles',
     styleFit: 'Style fit',
     expertiseFit: 'Expertise fit',
     logisticsFit: 'Logistics fit',
     backToAnswers: 'Back to answers',
     viewProfile: 'View profile',
-    matchedFocus: 'Matched focus',
+    matchedFocus: 'Recommended model',
     profileFocus: 'Profile focus',
     languagesLabel: 'Languages',
     sessionFormatLabel: 'Sessions',
@@ -273,6 +345,14 @@ const copyByLocale = {
     noRecommendationsTitle: 'No exact matches yet',
     noRecommendationsBody: 'No active therapist profiles are available yet. Once the directory has at least one profile, we will show the closest available matches.',
     selectedStylesLabel: 'Selected styles',
+    saveTherapist: 'Save',
+    savedTherapist: 'Saved',
+    savedTherapistsTitle: 'Saved therapists',
+    savedTherapistsEmpty: 'Save therapists from the result cards to keep a shortlist here.',
+    compareTitle: 'Compare saved therapists',
+    compareHint: 'Save at least two therapists to compare their key details.',
+    compareColumnTherapist: 'Therapist',
+    removeSaved: 'Remove',
     noAndNext: 'No, next',
     skippedReply: 'No, next',
     loadError: 'Could not load your saved answers.',
@@ -307,14 +387,14 @@ const copyByLocale = {
     moreToAddPlaceholder: '简单写一句就好...',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
-    recommendationsSubtitle: 'Ranked by C-NIP style fit, profile expertise, language, location, session format, and insurance match.',
+    recommendationsSubtitle: 'Focused on conversation style fit and recommended therapy models.',
     recommendationSource: 'Backend therapist profiles',
     styleFit: 'Style fit',
     expertiseFit: 'Expertise fit',
     logisticsFit: 'Logistics fit',
     backToAnswers: 'Back to answers',
     viewProfile: 'View profile',
-    matchedFocus: 'Matched focus',
+    matchedFocus: 'Recommended model',
     profileFocus: 'Profile focus',
     languagesLabel: 'Languages',
     sessionFormatLabel: 'Sessions',
@@ -358,14 +438,14 @@ const copyByLocale = {
     moreToAddPlaceholder: '簡單寫一句就可以...',
     styleHint: 'Choose one or more. We will use this C-NIP style profile to explain therapist fit.',
     recommendationsTitle: 'Recommended therapists',
-    recommendationsSubtitle: 'Ranked by C-NIP style fit, profile expertise, language, location, session format, and insurance match.',
+    recommendationsSubtitle: 'Focused on conversation style fit and recommended therapy models.',
     recommendationSource: 'Backend therapist profiles',
     styleFit: 'Style fit',
     expertiseFit: 'Expertise fit',
     logisticsFit: 'Logistics fit',
     backToAnswers: 'Back to answers',
     viewProfile: 'View profile',
-    matchedFocus: 'Matched focus',
+    matchedFocus: 'Recommended model',
     profileFocus: 'Profile focus',
     languagesLabel: 'Languages',
     sessionFormatLabel: 'Sessions',
@@ -534,9 +614,10 @@ export function OnboardingFlow() {
   const [typedQuestion, setTypedQuestion] = useState('');
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [recommendations, setRecommendations] = useState<TherapistRecommendation[]>([]);
+  const [savedTherapists, setSavedTherapists] = useState<SavedTherapistsById>(() => readSavedTherapists());
 
   const locale = getLocaleFromPreferredLanguage(formData.preferredLanguage);
-  const copy: typeof copyByLocale.en = { ...copyByLocale.en, ...copyByLocale[locale] };
+  const copy: typeof copyByLocale.en = useMemo(() => ({ ...copyByLocale.en, ...copyByLocale[locale] }), [locale]);
   const progress = ((step + 1) / TOTAL_STEPS) * 100;
   const selectedConcernLabels = useMemo(
     () =>
@@ -547,6 +628,11 @@ export function OnboardingFlow() {
   );
   const selectedConcernSample = selectedConcernLabels.length > 0 ? selectedConcernLabels.slice(0, 3).join(', ') : 'what has been feeling hardest lately';
   const cnipSampleQuestion = `I want help with ${selectedConcernSample}. How would you work with me?`;
+  const savedTherapistList = useMemo(
+    () => (Object.values(savedTherapists) as PsychologyTodayTherapistProfile[]).sort((left, right) => (left.name ?? '').localeCompare(right.name ?? '')),
+    [savedTherapists]
+  );
+  const compareTherapists = savedTherapistList.slice(0, 3);
 
   const questions = useMemo(
     () => [
@@ -562,12 +648,20 @@ export function OnboardingFlow() {
     ],
     [copy]
   );
+  const currentQuestion = questions[step];
 
   useEffect(() => {
     const hydrate = async () => {
       try {
         const saved = await loadOnboardingState();
         if (saved) {
+          const cnipPreferenceProfile =
+            saved.data.cnipPreferenceProfile ?? buildCnipPreferenceProfile(saved.data.cnipConversationStyles ?? []);
+          const styleScenarioResponses = saved.data.styleScenarioResponses ?? [];
+          const userStyleVector =
+            saved.data.userStyleVector ??
+            (styleScenarioResponses.length > 0 ? scoreUserStyleScenarios(styleScenarioResponses) : legacyProfileToStyleVector(cnipPreferenceProfile));
+
           setFormData({
             areaCode: saved.data.areaCode ?? '',
             preferredLanguage: saved.data.preferredLanguage ?? 'English',
@@ -579,7 +673,9 @@ export function OnboardingFlow() {
             insuranceProvider: saved.data.insuranceProvider ?? '',
             insurancePlan: saved.data.insurancePlan ?? '',
             cnipConversationStyles: saved.data.cnipConversationStyles ?? [],
-            cnipPreferenceProfile: saved.data.cnipPreferenceProfile ?? buildCnipPreferenceProfile(saved.data.cnipConversationStyles ?? []),
+            cnipPreferenceProfile,
+            styleScenarioResponses,
+            userStyleVector,
           });
           setSavedAt(saved.updatedAt);
         }
@@ -620,7 +716,7 @@ export function OnboardingFlow() {
       return;
     }
 
-    const fullQuestion = questions[step];
+    const fullQuestion = currentQuestion;
     setTypedQuestion('');
     let index = 0;
     const timer = window.setInterval(() => {
@@ -629,7 +725,7 @@ export function OnboardingFlow() {
       if (index >= fullQuestion.length) window.clearInterval(timer);
     }, 18);
     return () => window.clearInterval(timer);
-  }, [copy.intro, introStage, questions, step, typedIntro]);
+  }, [copy.intro, currentQuestion, introStage, typedIntro]);
 
   const currentStepValid = useMemo(() => {
     if (step === 0) return true;
@@ -644,7 +740,11 @@ export function OnboardingFlow() {
         formData.lifeAspectSkippedByCategory[category]
       );
     }
-    if (step === 8) return formData.cnipConversationStyles.length > 0;
+    if (step === 8) {
+      return STYLE_SCENARIOS.every((scenario) =>
+        formData.styleScenarioResponses.some((response) => response.scenarioId === scenario.id && response.bestCardId)
+      );
+    }
     return true;
   }, [formData, step]);
 
@@ -668,7 +768,7 @@ export function OnboardingFlow() {
       if (labels.length) return labels.join(', ');
       return note;
     }
-    if (targetStep === 8) return formData.cnipConversationStyles.map((style) => cnipStyleNames[style]).join(', ');
+    if (targetStep === 8) return `${formData.styleScenarioResponses.length} style scenarios completed`;
     return '';
   };
 
@@ -735,13 +835,46 @@ export function OnboardingFlow() {
     });
   };
 
+  const selectStyleScenarioCard = (scenarioId: string, cardId: string) => {
+    setFormData((prev) => {
+      const existing = prev.styleScenarioResponses.filter((response) => response.scenarioId !== scenarioId);
+      const styleScenarioResponses = [...existing, { scenarioId, bestCardId: cardId }];
+      const userStyleVector = scoreUserStyleScenarios(styleScenarioResponses);
+
+      return {
+        ...prev,
+        styleScenarioResponses,
+        userStyleVector,
+        cnipPreferenceProfile: styleVectorToLegacyProfile(userStyleVector),
+      };
+    });
+  };
+
+  const toggleSavedTherapist = (therapist: PsychologyTodayTherapistProfile) => {
+    setSavedTherapists((prev) => {
+      const next = { ...prev };
+      if (next[therapist.id]) {
+        delete next[therapist.id];
+      } else {
+        next[therapist.id] = therapist;
+      }
+      writeSavedTherapists(next);
+      return next;
+    });
+  };
+
   const handleSubmit = async () => {
     if (!currentStepValid) return;
     setStatus('saving');
     setErrorMessage('');
     try {
       const saved = await saveOnboardingState(formData);
-      const generatedRecommendations = await generateTherapistMatches(formData, saved.userId);
+      let generatedRecommendations: TherapistRecommendation[];
+      try {
+        generatedRecommendations = await generateTherapistMatches(formData, saved.userId);
+      } catch {
+        generatedRecommendations = recommendTherapists(formData);
+      }
       setRecommendations(generatedRecommendations);
       setSavedAt(saved.updatedAt);
       setStatus('saved');
@@ -925,73 +1058,61 @@ export function OnboardingFlow() {
     }
 
     if (step === 8) {
-      const virtualTherapistStyles = cnipStyleOptions.slice(0, 4);
-      const previewLines = [
-        `I felt ${selectedConcernSample}.`,
-        ...(Object.values(formData.lifeAspectNotesByCategory) as string[])
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .slice(0, 1),
-      ];
-
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <p className="text-sm font-medium text-[#746c62]">{copy.styleHint}</p>
-          <div className="rounded-[24px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
-            <div className="rounded-[24px] bg-[#fffdf8] p-4 shadow-sm">
-              <div className="space-y-4">
-                {previewLines.map((line, index) => (
-                  <div key={`${line}-${index}`} className="flex justify-end">
-                    <div className="max-w-[82%]">
-                      <p className="mb-1 px-2 text-xs font-semibold text-[#5f6658]">You</p>
-                      <div className="rounded-[22px] rounded-tr-md bg-[#6e7b64] px-5 py-4 text-[15px] font-medium leading-7 text-[#f9f5ec] shadow-sm">
-                        {line}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          {STYLE_SCENARIOS.map((scenario, scenarioIndex) => {
+            const selectedCardId = formData.styleScenarioResponses.find((response) => response.scenarioId === scenario.id)?.bestCardId;
 
-                {virtualTherapistStyles.map((style, index) => {
-                  const selected = formData.cnipConversationStyles.includes(style.id);
-                  const theme = therapistBubbleThemes[index % therapistBubbleThemes.length];
-                  return (
-                    <button
-                      type="button"
-                      key={style.id}
-                      onClick={() => toggleCnipStyle(style.id)}
-                      className={[
-                        'flex w-full justify-start rounded-[24px] border border-transparent p-0 text-left transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
-                        selected ? 'ring-2 ring-[#6e7b64]/35' : 'hover:border-[#d8d0c2]',
-                      ].join(' ')}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="mt-1 shrink-0">
-                          <InitialsAvatar name={style.therapistName} className="h-8 w-8" />
+            return (
+              <section key={scenario.id} className="rounded-[24px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Scenario {scenarioIndex + 1}</p>
+                  <h3 className="mt-1 text-lg font-semibold text-[#332d28]">{scenario.question}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[#746c62]">{scenario.subtext}</p>
+                </div>
+
+                <div className="grid gap-3">
+                  {scenario.cards.map((card) => {
+                    const selected = selectedCardId === card.id;
+
+                    return (
+                      <button
+                        type="button"
+                        key={card.id}
+                        onClick={() => selectStyleScenarioCard(scenario.id, card.id)}
+                        className={[
+                          'w-full rounded-[16px] border bg-[#fffdf8] p-4 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
+                          selected ? 'border-[#6e7b64] ring-2 ring-[#6e7b64]/25' : 'border-[#e1d8c9] hover:border-[#7a866f]',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-[#40382f]">{card.title}</p>
+                            {card.shortLabel && <p className="mt-1 text-sm font-medium text-[#5f6658]">{card.shortLabel}</p>}
+                          </div>
+                          {selected && <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#6e7b64]" />}
                         </div>
-                        <div className="max-w-[88%]">
-                        <div className="mb-1 flex items-center gap-2 px-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{style.therapistName}</p>
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${theme.tag}`}>{style.styleLabel}</span>
-                          {selected && <Check className="h-4 w-4 text-[#6e7b64]" />}
-                        </div>
-                        <div
-                          className={[
-                            `relative rounded-[22px] rounded-tl-md px-5 py-4 text-[15px] leading-7 shadow-[0_10px_24px_rgba(97,86,68,0.08)] ${theme.bubble}`,
-                            selected ? 'outline outline-2 outline-offset-2 outline-[#6e7b64]' : '',
-                          ].join(' ')}
-                        >
-                          <span aria-hidden="true" className={`absolute -left-1 top-4 h-3 w-3 rotate-45 border-b border-l ${theme.tail}`} />
-                          <p>{style.sampleResponse(selectedConcernSample)}</p>
-                        </div>
-                      </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                        {card.shortCopy || card.longCopy ? (
+                          <>
+                            <p className="mt-3 text-sm leading-6 text-[#746c62] sm:hidden">{card.shortCopy ?? card.description}</p>
+                            <p className="mt-3 hidden text-sm leading-6 text-[#746c62] sm:block">{card.longCopy ?? card.description}</p>
+                          </>
+                        ) : (
+                          <p className="mt-3 text-sm leading-6 text-[#746c62]">{card.description}</p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          <div className="rounded-[16px] bg-[#fffdf8] p-4 text-sm leading-6 text-[#746c62]">
+            Choose the response that feels most helpful in each scenario. The app uses these choices to describe your preferred conversation style.
           </div>
-        </div>
+              </div>
       );
     }
 
@@ -1035,7 +1156,7 @@ export function OnboardingFlow() {
   };
 
   if (showRecommendations) {
-    const selectedStyles = formData.cnipConversationStyles.map((style) => cnipStyleNames[style]).join(', ');
+    const idealProfile = generateIdealTherapistProfile(formData.userStyleVector);
 
     return (
       <main className="min-h-screen bg-[#efe7d7] text-[#332d28]">
@@ -1048,11 +1169,6 @@ export function OnboardingFlow() {
               </div>
               <h1 className="text-3xl font-semibold leading-tight text-[#332d28] sm:text-4xl">{copy.recommendationsTitle}</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-[#746c62]">{copy.recommendationsSubtitle}</p>
-              {selectedStyles && (
-                <p className="mt-3 text-sm font-medium text-[#5f6658]">
-                  {copy.selectedStylesLabel}: {selectedStyles}
-                </p>
-              )}
             </div>
             <button
               type="button"
@@ -1065,6 +1181,19 @@ export function OnboardingFlow() {
           </header>
 
           <section className="grid gap-4 pb-6">
+            <section className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-5 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Your ideal therapist profile</p>
+              <h2 className="mt-2 text-2xl font-semibold text-[#332d28]">{idealProfile.title}</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-[#746c62]">{idealProfile.summary}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {idealProfile.preferredTraits.map((trait) => (
+                  <span key={trait} className="rounded-full bg-[#dfe7d8] px-3 py-1 text-xs font-semibold text-[#53614d]">
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            </section>
+
             {recommendations.length === 0 && (
               <div className="rounded-[24px] border border-[#d8d0c2] bg-[#f7f2e8] p-6 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
                 <h2 className="text-2xl font-semibold text-[#332d28]">{copy.noRecommendationsTitle}</h2>
@@ -1072,23 +1201,79 @@ export function OnboardingFlow() {
               </div>
             )}
 
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <section className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-[#332d28]">{copy.savedTherapistsTitle}</h2>
+                  <span className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-semibold text-[#62594f]">{savedTherapistList.length}</span>
+                </div>
+
+                {savedTherapistList.length === 0 ? (
+                  <p className="text-sm leading-6 text-[#746c62]">{copy.savedTherapistsEmpty}</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {savedTherapistList.map((therapist) => (
+                      <div key={therapist.id} className="flex items-start justify-between gap-3 rounded-[8px] bg-[#fffdf8] p-3">
+                        <div>
+                          <p className="font-semibold text-[#40382f]">
+                            {therapist.name}, {therapist.credentials}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-[#746c62]">{joinOrFallback(therapist.languages, 'Not listed')} / {getTherapistSessionText(therapist)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleSavedTherapist(therapist)}
+                          className="shrink-0 rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-3 py-1.5 text-xs font-medium text-[#40382f] transition hover:border-[#7a866f] hover:bg-[#f1ede3]"
+                        >
+                          {copy.removeSaved}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
+                <h2 className="text-lg font-semibold text-[#332d28]">{copy.compareTitle}</h2>
+                {compareTherapists.length < 2 ? (
+                  <p className="mt-2 text-sm leading-6 text-[#746c62]">{copy.compareHint}</p>
+                ) : (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
+                      <thead>
+                        <tr>
+                          {[copy.compareColumnTherapist, copy.languagesLabel, copy.sessionFormatLabel, copy.insuranceLabel, copy.rateLabel, copy.profileFocus].map((heading) => (
+                            <th key={heading} className="border-b border-[#d8d0c2] px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">
+                              {heading}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {compareTherapists.map((therapist) => (
+                          <tr key={therapist.id} className="align-top">
+                            <td className="border-b border-[#ede6d8] px-3 py-3 font-semibold text-[#40382f]">
+                              {therapist.name}
+                              <span className="block text-xs font-medium text-[#746c62]">{therapist.credentials}</span>
+                            </td>
+                            <td className="border-b border-[#ede6d8] px-3 py-3 text-[#40382f]">{joinOrFallback(therapist.languages, 'Not listed')}</td>
+                            <td className="border-b border-[#ede6d8] px-3 py-3 text-[#40382f]">{getTherapistSessionText(therapist)}</td>
+                            <td className="border-b border-[#ede6d8] px-3 py-3 text-[#40382f]">{getTherapistInsuranceText(therapist)}</td>
+                            <td className="border-b border-[#ede6d8] px-3 py-3 text-[#40382f]">{getTherapistRateText(therapist)}</td>
+                            <td className="border-b border-[#ede6d8] px-3 py-3 text-[#40382f]">{therapist.expertise.slice(0, 3).join(', ')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
+
             {recommendations.slice(0, 4).map((recommendation, index) => {
               const therapist = recommendation.therapist;
-              const languageText = therapist.languages?.length ? therapist.languages.join(', ') : 'Not listed';
-              const sessionText = therapist.sessionFormats.length ? therapist.sessionFormats.map((format) => (format === 'InPerson' ? 'In person' : 'Virtual')).join(' + ') : 'Confirm with therapist';
-              const insuranceText = therapist.matchingInsurance?.length
-                ? therapist.matchingInsurance.map((insurance) => `${insurance.provider}${insurance.plan ? ` ${insurance.plan}` : ''}`).join(', ')
-                : therapist.insuranceProviders.length
-                  ? therapist.insuranceProviders.join(', ')
-                  : 'Confirm with therapist';
-              const rateText =
-                therapist.hourlyRateMin && therapist.hourlyRateMax
-                  ? `$${therapist.hourlyRateMin}-$${therapist.hourlyRateMax}/session`
-                  : therapist.hourlyRateMin
-                    ? `From $${therapist.hourlyRateMin}/session`
-                    : 'Rate not listed';
-              const profileFocus = therapist.expertise.slice(0, 6);
-              const matchedFocus = therapist.therapyModels.length ? therapist.therapyModels : profileFocus.slice(0, 3);
+              const isSaved = Boolean(savedTherapists[therapist.id]);
+              const recommendedModels = recommendation.recommendedModels.length > 0 ? recommendation.recommendedModels.slice(0, 5) : therapist.therapyModels.slice(0, 5);
 
               return (
                 <article key={therapist.id} className="rounded-[20px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
@@ -1109,74 +1294,27 @@ export function OnboardingFlow() {
                             )}
                           </div>
                         </div>
-                        <div className="rounded-full bg-[#6e7b64] px-4 py-2 text-sm font-semibold text-[#f9f5ec]">{recommendation.score}% match</div>
                       </div>
 
                       <p className="mt-4 max-w-3xl text-sm leading-6 text-[#40382f]">{therapist.bio}</p>
 
-                      <div className="mt-4 grid gap-3 rounded-[18px] border border-[#ded6c8] bg-[#fffdf8] p-4 text-sm text-[#40382f] sm:grid-cols-2">
-                        {[
-                          [copy.languagesLabel, languageText],
-                          [copy.sessionFormatLabel, sessionText],
-                          [copy.insuranceLabel, insuranceText],
-                          [copy.rateLabel, rateText],
-                          [copy.serviceAreaLabel, therapist.areaCodes.slice(0, 5).join(', ')],
-                        ].map(([label, value]) => (
-                          <div key={label}>
-                            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{label}</p>
-                            <p className="mt-1 font-medium text-[#40382f]">{value}</p>
-                          </div>
-                        ))}
-                      </div>
-
                       <div className="mt-4">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{copy.matchedFocus}</p>
                         <div className="flex flex-wrap gap-2">
-                          {matchedFocus.map((model) => (
+                          {recommendedModels.map((model) => (
                             <span key={model} className="rounded-full bg-[#dfe7d8] px-3 py-1 text-xs font-semibold text-[#53614d]">
                               {model}
                             </span>
                           ))}
                         </div>
                       </div>
-
-                      <div className="mt-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{copy.profileFocus}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {profileFocus.map((focus) => (
-                            <span key={focus} className="rounded-full bg-[#ede6d8] px-3 py-1 text-xs font-medium text-[#62594f]">
-                              {focus}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <ul className="mt-5 grid gap-2 text-sm leading-6 text-[#40382f]">
-                        {recommendation.reasons.map((reason) => (
-                          <li key={reason} className="flex gap-2">
-                            <Check className="mt-1 h-4 w-4 shrink-0 text-[#6e7b64]" />
-                            <span>{reason}</span>
-                          </li>
-                        ))}
-                      </ul>
                     </div>
 
                     <aside className="space-y-3 rounded-[8px] bg-[#fffdf8] p-4">
-                      {[
-                        [copy.styleFit, recommendation.styleFit],
-                        [copy.expertiseFit, recommendation.expertiseFit],
-                        [copy.logisticsFit, recommendation.logisticsFit],
-                      ].map(([label, value]) => (
-                        <div key={label as string}>
-                          <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">
-                            <span>{label}</span>
-                            <span>{value}%</span>
-                          </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-[#ede6d8]">
-                            <div className="h-full rounded-full bg-[#6e7b64]" style={{ width: `${value}%` }} />
-                          </div>
-                        </div>
-                      ))}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8b8479]">{copy.styleFit}</p>
+                        <p className="mt-2 rounded-[8px] bg-[#eef6e8] px-3 py-2 text-sm font-semibold text-[#53614d]">{getStyleFitLabel(recommendation.styleFit)}</p>
+                      </div>
                       <a
                         href={therapist.profileUrl}
                         target="_blank"
@@ -1186,6 +1324,19 @@ export function OnboardingFlow() {
                         {copy.viewProfile}
                         <ExternalLink className="h-4 w-4" />
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => toggleSavedTherapist(therapist)}
+                        className={[
+                          'inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border px-4 text-sm font-medium transition',
+                          isSaved
+                            ? 'border-[#6e7b64] bg-[#eef6e8] text-[#53614d] hover:bg-[#e2efd9]'
+                            : 'border-[#d2c7b4] bg-[#fbf7ef] text-[#40382f] hover:border-[#7a866f] hover:bg-[#f1ede3]',
+                        ].join(' ')}
+                      >
+                        <Heart className={`h-4 w-4 ${isSaved ? 'fill-[#6e7b64] text-[#6e7b64]' : ''}`} />
+                        {isSaved ? copy.savedTherapist : copy.saveTherapist}
+                      </button>
                     </aside>
                   </div>
                 </article>
@@ -1350,7 +1501,7 @@ export function OnboardingFlow() {
                       <span aria-hidden="true" className={assistantBubbleTailClass} />
                       <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#8b8479]">{assistantName}</p>
                       {typedQuestion}
-                      <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse rounded-sm bg-[#6e7b64]" aria-hidden="true" />
+                      {typedQuestion !== currentQuestion && <span className="ml-1 inline-block h-4 w-2 translate-y-0.5 animate-pulse rounded-sm bg-[#6e7b64]" aria-hidden="true" />}
                     </div>
                   </div>
                 )}

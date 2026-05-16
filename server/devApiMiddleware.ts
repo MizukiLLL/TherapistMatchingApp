@@ -326,6 +326,8 @@ function buildFetchedTherapistMatchReflection(
     {
       ...request,
       cnipPreferenceProfile: request.cnipPreferenceProfile ?? savedPreferences?.cnipPreferenceProfile ?? savedTmtiProfile?.dimensionScores as MatchGenerationRequest['cnipPreferenceProfile'],
+      styleScenarioResponses: request.styleScenarioResponses ?? savedPreferences?.styleScenarioResponses,
+      userStyleVector: request.userStyleVector ?? savedPreferences?.userStyleVector,
     },
     savedPreferences
   );
@@ -823,6 +825,8 @@ export function createDevApiMiddleware() {
           carePreference: typeof body.carePreference === 'string' ? body.carePreference : undefined,
           cnipConversationStyles: Array.isArray(body.cnipConversationStyles) ? body.cnipConversationStyles.map(String) as any : undefined,
           cnipPreferenceProfile: typeof body.cnipPreferenceProfile === 'object' && body.cnipPreferenceProfile !== null ? body.cnipPreferenceProfile as any : undefined,
+          styleScenarioResponses: Array.isArray(body.styleScenarioResponses) ? body.styleScenarioResponses as any : undefined,
+          userStyleVector: typeof body.userStyleVector === 'object' && body.userStyleVector !== null ? body.userStyleVector as any : undefined,
         });
 
         sendJson(response, 200, { data: preferences });
@@ -853,6 +857,8 @@ export function createDevApiMiddleware() {
           {
             ...body,
             cnipPreferenceProfile: body.cnipPreferenceProfile ?? savedPreferences?.cnipPreferenceProfile ?? savedTmtiProfile?.dimensionScores as MatchGenerationRequest['cnipPreferenceProfile'],
+            styleScenarioResponses: body.styleScenarioResponses ?? savedPreferences?.styleScenarioResponses,
+            userStyleVector: body.userStyleVector ?? savedPreferences?.userStyleVector,
           },
           savedPreferences
         );

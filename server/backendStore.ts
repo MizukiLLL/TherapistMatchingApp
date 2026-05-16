@@ -1,7 +1,7 @@
 import type { TherapistMatch } from './matchingEngine.ts';
 import { readDatabase, writeDatabase } from './localDatabase.ts';
 import { therapistDirectory, type TherapistDirectoryRecord } from './therapistDirectory.ts';
-import type { CnipConversationStyle, OnboardingFormData, SavedOnboardingState } from '../onboardingTypes.ts';
+import type { CnipConversationStyle, OnboardingFormData, SavedOnboardingState, StyleScenarioResponse, UserStyleVector } from '../onboardingTypes.ts';
 
 export type UserRecord = {
   id: string;
@@ -31,6 +31,8 @@ export type UserPreferenceRecord = {
     pastOrientation: number;
     warmSupport: number;
   };
+  styleScenarioResponses?: StyleScenarioResponse[];
+  userStyleVector?: UserStyleVector;
   updatedAt: string;
 };
 
@@ -168,6 +170,8 @@ export function upsertUserPreferences(userId: string, input: Partial<UserPrefere
     carePreference: input.carePreference?.trim() || existing?.carePreference,
     cnipConversationStyles: input.cnipConversationStyles ?? existing?.cnipConversationStyles,
     cnipPreferenceProfile: input.cnipPreferenceProfile ?? existing?.cnipPreferenceProfile,
+    styleScenarioResponses: input.styleScenarioResponses ?? existing?.styleScenarioResponses,
+    userStyleVector: input.userStyleVector ?? existing?.userStyleVector,
     updatedAt: nowIso(),
   };
 
@@ -250,6 +254,12 @@ export function getSavedOnboardingState(userId: string): SavedOnboardingState | 
   const fallbackLifeAspects = preference.therapyTypes ?? [];
   const hasCategorizedLifeAspects = Object.values(lifeAspectsByCategory).some((values) => values.length > 0);
   const cnipConversationStyles = preference.cnipConversationStyles ?? [];
+  const userStyleVector = preference.userStyleVector ?? {
+    therapist_directive: 0.5,
+    emotionally_intensive: 0.5,
+    past_focused: 0.5,
+    support_focused: 0.5,
+  };
 
   return {
     userId,
@@ -281,6 +291,8 @@ export function getSavedOnboardingState(userId: string): SavedOnboardingState | 
         pastOrientation: 0,
         warmSupport: 0,
       },
+      styleScenarioResponses: preference.styleScenarioResponses ?? [],
+      userStyleVector,
     },
     updatedAt: preference.updatedAt,
   };

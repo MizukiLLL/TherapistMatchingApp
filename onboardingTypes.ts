@@ -9,6 +9,20 @@ export type CnipPreferenceProfile = {
   warmSupport: number;
 };
 
+export type UserStyleVector = {
+  therapist_directive: number;
+  emotionally_intensive: number;
+  past_focused: number;
+  support_focused: number;
+};
+
+export type StyleScenarioResponse = {
+  scenarioId: string;
+  bestCardId: string;
+  secondCardId?: string;
+  leastCardId?: string;
+};
+
 export type OnboardingFormData = {
   areaCode: string;
   preferredLanguage: PreferredLanguage;
@@ -36,6 +50,8 @@ export type OnboardingFormData = {
   insurancePlan: string;
   cnipConversationStyles: CnipConversationStyle[];
   cnipPreferenceProfile: CnipPreferenceProfile;
+  styleScenarioResponses: StyleScenarioResponse[];
+  userStyleVector: UserStyleVector;
 };
 
 export type SavedOnboardingState = {

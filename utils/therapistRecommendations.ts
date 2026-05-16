@@ -29,6 +29,7 @@ export type TherapistRecommendation = {
   expertiseFit: number;
   logisticsFit: number;
   reasons: string[];
+  recommendedModels: string[];
 };
 
 export const cnipStyleProfiles: Record<CnipConversationStyle, CnipPreferenceProfile> = {
@@ -230,6 +231,7 @@ export function recommendTherapists(data: OnboardingFormData): TherapistRecommen
         styleFit,
         expertiseFit,
         logisticsFit,
+        recommendedModels: therapist.therapyModels.length > 0 ? therapist.therapyModels : ['CBT', 'ACT', 'Mindfulness-Based Therapy'],
         reasons: [
           `${styleFit}% C-NIP style fit based on your conversation preferences.`,
           matchingExpertise.length > 0 ? `Matches ${matchingExpertise.slice(0, 3).join(', ')}.` : 'Broad fit for your selected concerns.',

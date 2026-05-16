@@ -100,6 +100,8 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
         insurancePlan: data.insurancePlan,
         cnipConversationStyles: data.cnipConversationStyles,
         cnipPreferenceProfile: data.cnipPreferenceProfile,
+        styleScenarioResponses: data.styleScenarioResponses,
+        userStyleVector: data.userStyleVector,
       }),
     });
 
@@ -140,10 +142,18 @@ type MatchGenerationResponse = {
     cnip_score: number;
     therapy_model_score: number;
     final_score: number;
+    scoreBreakdown?: {
+      practicalFit: number;
+      clinicalFit: number;
+      adjustedStyleFit: number;
+      culturalLanguageFit: number;
+      profileQualityTrust: number;
+    };
     explanation: {
       tokens: string[];
       matchedTherapyTypes: string[];
       matchedTherapyModels: string[];
+      recommendedTherapyModels?: string[];
       matchingInsurance: Array<{ provider: string; plan: string | null; acceptingNewPatients: boolean }>;
       scoreBreakdown: {
         expertise: number;
@@ -174,6 +184,8 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       insurancePlan: data.insurancePlan,
       carePreference: data.carePreference,
       cnipPreferenceProfile: data.cnipPreferenceProfile,
+      styleScenarioResponses: data.styleScenarioResponses,
+      userStyleVector: data.userStyleVector,
       fetchPsychologyToday: true,
     }),
   });
@@ -210,9 +222,10 @@ export async function generateTherapistMatches(data: OnboardingFormData, userId:
       bio: match.therapist.bio,
     },
     score: match.final_score,
-    styleFit: match.cnip_score,
+    styleFit: Math.round((match.scoreBreakdown?.adjustedStyleFit ?? match.cnip_score / 100) * 100),
     expertiseFit: match.explanation.scoreBreakdown.expertise,
     logisticsFit: Math.round((match.explanation.scoreBreakdown.language + match.explanation.scoreBreakdown.sessionFormat) / 2),
+    recommendedModels: (match.explanation.recommendedTherapyModels?.length ? match.explanation.recommendedTherapyModels : match.explanation.matchedTherapyModels).slice(0, 5),
     reasons: [...match.hard_constraint_reasons, ...match.explanation.tokens],
   }));
 }
