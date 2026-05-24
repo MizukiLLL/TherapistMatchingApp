@@ -1,5 +1,8 @@
 import { PRACTICAL_FIT_WEIGHTS } from './matchingConfig.ts';
 import type { NormalizedTherapistProfile } from './matchingTypes.ts';
+import { anyZipWithinMiles, getStateForZip } from './zipGeo.ts';
+
+const IN_PERSON_RADIUS_MILES = 50;
 
 export type PracticalFitInput = {
   areaCode: string;
@@ -73,15 +76,29 @@ function budgetToMaxFee(budgetRange?: string, maxFee?: number): number | undefin
   return undefined;
 }
 
+function virtualLocationScore(therapist: NormalizedTherapistProfile, userZip: string): number {
+  if (therapist.practical.telehealth === false) return 0;
+  const userState = getStateForZip(userZip);
+  if (!userState) return therapist.practical.telehealth === true ? 0.6 : 0.4;
+  if (therapist.practical.states.length === 0) return therapist.practical.telehealth === true ? 0.5 : 0.3;
+  const licensedHere = therapist.practical.states.some((state) => state.toUpperCase() === userState.toUpperCase());
+  if (!licensedHere) return 0;
+  return therapist.practical.telehealth === true ? 1 : therapist.practical.telehealth === null ? 0.6 : 0;
+}
+
+function inPersonLocationScore(therapist: NormalizedTherapistProfile, userZip: string): number {
+  if (therapist.practical.in_person === false) return 0;
+  if (therapist.practical.zip_codes_or_locations.length === 0) return 0;
+  if (!anyZipWithinMiles(userZip, therapist.practical.zip_codes_or_locations, IN_PERSON_RADIUS_MILES)) return 0;
+  return therapist.practical.in_person === true ? 1 : 0.6;
+}
+
 function locationModeFit(therapist: NormalizedTherapistProfile, input: PracticalFitInput): number {
   const preference = normalize(input.carePreference);
-  const zipMatch = therapist.practical.zip_codes_or_locations.includes(input.areaCode);
 
-  if (preference === 'virtual') return therapist.practical.telehealth === true ? 1 : therapist.practical.telehealth === null ? 0.5 : 0;
-  if (preference === 'inperson' || preference === 'in_person') return zipMatch && therapist.practical.in_person !== false ? 1 : 0;
-  if (zipMatch) return 1;
-  if (therapist.practical.telehealth) return 0.8;
-  return 0.45;
+  if (preference === 'virtual') return virtualLocationScore(therapist, input.areaCode);
+  if (preference === 'inperson' || preference === 'in_person') return inPersonLocationScore(therapist, input.areaCode);
+  return Math.max(virtualLocationScore(therapist, input.areaCode), inPersonLocationScore(therapist, input.areaCode));
 }
 
 function availabilityFit(therapist: NormalizedTherapistProfile): number {
@@ -112,12 +129,28 @@ export function applyHardFilters(therapist: NormalizedTherapistProfile, input: P
     reasons.push(`Does not clearly accept ${input.insuranceProvider}.`);
   }
 
-  if (preference === 'virtual' && therapist.practical.telehealth === false) {
-    reasons.push('Does not list virtual sessions.');
-  }
+  const userState = getStateForZip(input.areaCode);
+  const licensedInUserState =
+    !!userState && therapist.practical.states.some((state) => state.toUpperCase() === userState.toUpperCase());
+  const withinInPersonRadius =
+    therapist.practical.in_person !== false &&
+    therapist.practical.zip_codes_or_locations.length > 0 &&
+    anyZipWithinMiles(input.areaCode, therapist.practical.zip_codes_or_locations, IN_PERSON_RADIUS_MILES);
 
-  if ((preference === 'inperson' || preference === 'in_person') && (!therapist.practical.in_person || !therapist.practical.zip_codes_or_locations.includes(input.areaCode))) {
-    reasons.push('Does not appear compatible with in-person location.');
+  if (preference === 'virtual') {
+    if (therapist.practical.telehealth === false) reasons.push('Does not list virtual sessions.');
+    else if (userState && therapist.practical.states.length > 0 && !licensedInUserState) {
+      reasons.push(`Not licensed in your state (${userState}) for telehealth.`);
+    }
+  } else if (preference === 'inperson' || preference === 'in_person') {
+    if (!withinInPersonRadius) {
+      reasons.push(`No in-person location within ${IN_PERSON_RADIUS_MILES} miles of ZIP ${input.areaCode}.`);
+    }
+  } else if (preference === 'either') {
+    const virtualPath = therapist.practical.telehealth !== false && (!userState || therapist.practical.states.length === 0 || licensedInUserState);
+    if (!virtualPath && !withinInPersonRadius) {
+      reasons.push(`Not licensed in your state (${userState ?? 'unknown'}) for telehealth, and no in-person location within ${IN_PERSON_RADIUS_MILES} miles.`);
+    }
   }
 
   if (therapist.practical.accepting_new_clients === false) {

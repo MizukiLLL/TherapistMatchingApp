@@ -67,12 +67,20 @@ function practicalSummary(input: AlgorithmInput, therapist: NormalizedTherapistP
   return lines.length > 0 ? lines : ['Practical details should be confirmed before booking.'];
 }
 
-export function rankTherapists(input: AlgorithmInput, therapists: NormalizedTherapistProfile[]): IlluminMatchResult[] {
+export type RankTherapistsOptions = {
+  bypassHardFilters?: boolean;
+};
+
+export function rankTherapists(
+  input: AlgorithmInput,
+  therapists: NormalizedTherapistProfile[],
+  options: RankTherapistsOptions = {}
+): IlluminMatchResult[] {
   const userTags = input.userConcernTags.length > 0 ? input.userConcernTags : normalizeConcernTags(input.rawUserConcerns);
 
   return therapists
     .map((therapist) => ({ therapist, hardFilter: applyHardFilters(therapist, input) }))
-    .filter(({ hardFilter }) => hardFilter.passed)
+    .filter(({ hardFilter }) => options.bypassHardFilters || hardFilter.passed)
     .map(({ therapist }) => {
       const practicalFit = scorePracticalFit(therapist, input).score;
       const clinical = scoreClinicalFit(userTags, therapist);

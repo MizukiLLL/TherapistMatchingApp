@@ -14,9 +14,10 @@ export type LegacyCnipProfile = {
 
 export type UserStyleScenarioChoice = {
   scenarioId: string;
-  bestCardId: string;
+  bestCardId?: string;
   secondCardId?: string;
   leastCardId?: string;
+  selectedCardIds?: string[];
 };
 
 export type ModalityPreferenceId =

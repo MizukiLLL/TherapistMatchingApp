@@ -896,8 +896,12 @@ export function createDevApiMiddleware() {
           psychologyTodayFetch && 'ingestedTherapistIds' in psychologyTodayFetch
             ? psychologyTodayFetch.ingestedTherapistIds
             : [];
-        const matchDirectory = fetchedTherapistIds.length > 0
+        const MIN_DIRECTORY_FOR_MATCH = 3;
+        const fetchedSubset = fetchedTherapistIds.length > 0
           ? directory.filter((therapist) => fetchedTherapistIds.includes(therapist.id))
+          : [];
+        const matchDirectory = fetchedSubset.length >= MIN_DIRECTORY_FOR_MATCH
+          ? fetchedSubset
           : directory;
         const startedAt = performance.now();
         const matches = saveGeneratedMatches(preferences.userId, generateMatches(preferences, matchDirectory));

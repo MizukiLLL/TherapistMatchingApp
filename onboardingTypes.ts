@@ -30,9 +30,10 @@ export type UserStyleVector = {
 
 export type StyleScenarioResponse = {
   scenarioId: string;
-  bestCardId: string;
+  bestCardId?: string;
   secondCardId?: string;
   leastCardId?: string;
+  selectedCardIds?: string[];
 };
 
 export type ModalityPreferenceId =

@@ -375,29 +375,36 @@ export function generateMatches(preferences: ResolvedMatchPreferences, directory
   const normalizedTherapists = activeTherapists.map(normalizeTherapistProfile);
   const concernAssessment = buildConcernAssessment({ selectedConcerns: preferences.therapyTypes });
   const recommendedModalities = getRecommendedModalities(preferences.modalityPreferenceIds, concernAssessment.concernTags);
-  const rankedMatches = rankTherapists(
-    {
-      areaCode: preferences.areaCode,
-      preferredLanguage: preferences.preferredLanguage,
-      requiredLanguages: preferences.requiredLanguages,
-      preferredLanguages: preferences.preferredLanguages,
-      languagePriority: preferences.languagePriority,
-      culturalContextNeeds: preferences.culturalContextNeeds,
-      identitySupportNeeds: preferences.identitySupportNeeds,
-      culturePriority: preferences.culturePriority,
-      insuranceProvider: preferences.insuranceProvider,
-      paymentPreference: preferences.paymentPreference,
-      carePreference: preferences.carePreference,
-      budgetRange: preferences.budgetRange,
-      therapyFor: preferences.therapyFor,
-      availability: preferences.availability,
-      rawUserConcerns: preferences.therapyTypes,
-      userConcernTags: concernAssessment.concernTags.length ? concernAssessment.concernTags : normalizeConcernTags(preferences.therapyTypes),
-      userStyleVector,
-      recommendedModalities,
-    },
-    normalizedTherapists
-  ).slice(0, preferences.limit);
+  const rankerInput = {
+    areaCode: preferences.areaCode,
+    preferredLanguage: preferences.preferredLanguage,
+    requiredLanguages: preferences.requiredLanguages,
+    preferredLanguages: preferences.preferredLanguages,
+    languagePriority: preferences.languagePriority,
+    culturalContextNeeds: preferences.culturalContextNeeds,
+    identitySupportNeeds: preferences.identitySupportNeeds,
+    culturePriority: preferences.culturePriority,
+    insuranceProvider: preferences.insuranceProvider,
+    paymentPreference: preferences.paymentPreference,
+    carePreference: preferences.carePreference,
+    budgetRange: preferences.budgetRange,
+    therapyFor: preferences.therapyFor,
+    availability: preferences.availability,
+    rawUserConcerns: preferences.therapyTypes,
+    userConcernTags: concernAssessment.concernTags.length ? concernAssessment.concernTags : normalizeConcernTags(preferences.therapyTypes),
+    userStyleVector,
+    recommendedModalities,
+  };
+  const hardPassed = rankTherapists(rankerInput, normalizedTherapists);
+  const MIN_RESULTS = 3;
+  let rankedMatches = hardPassed.slice(0, preferences.limit);
+  if (rankedMatches.length < MIN_RESULTS) {
+    const passedIds = new Set(rankedMatches.map((match) => match.therapistId));
+    const fallback = rankTherapists(rankerInput, normalizedTherapists, { bypassHardFilters: true })
+      .filter((match) => !passedIds.has(match.therapistId))
+      .slice(0, MIN_RESULTS - rankedMatches.length);
+    rankedMatches = [...rankedMatches, ...fallback];
+  }
 
   return rankedMatches
     .map<TherapistMatch | null>((match) => {

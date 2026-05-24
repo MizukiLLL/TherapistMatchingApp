@@ -25,15 +25,13 @@ export const CULTURAL_CONTEXT_OPTIONS = [
   'immigrant or bicultural experience',
   'international student experience',
   'first-generation experience',
-  'religious or spiritual background',
   'interracial or multicultural family',
+  'religious or spiritual background',
   'LGBTQ+ identity',
   'gender identity',
   'neurodivergence',
   'disability',
   'chronic illness',
-  'racial identity',
-  'mixed-race or multicultural identity',
   'no strong preference',
 ] as const;
 

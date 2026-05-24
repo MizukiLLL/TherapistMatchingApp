@@ -24,7 +24,7 @@ type CnipStyleOption = {
 };
 type SavedTherapistsById = Record<string, PsychologyTodayTherapistProfile>;
 
-const TOTAL_STEPS = 13;
+const TOTAL_STEPS = 15;
 const SAVED_THERAPISTS_STORAGE_KEY = 'bettermatch-saved-therapists';
 
 const LIFE_ASPECT_CATEGORY_BY_STEP: Record<1 | 2 | 3 | 4, LifeAspectCategory> = {
@@ -180,12 +180,12 @@ const budgetOptions = [
   { id: 'flexible', label: 'Flexible' },
 ] as const;
 
-const availabilityOptions = [
-  { id: 'asap', label: 'As soon as possible' },
-  { id: '1_2_weeks', label: 'Within 1-2 weeks' },
-  { id: 'within_month', label: 'Within a month' },
-  { id: 'exploring', label: 'I am exploring' },
-] as const;
+const availabilityOptions: Option<Exclude<OnboardingFormData['logistics']['availability'], ''>>[] = [
+  { id: 'asap', label: { en: 'Within 1 week', 'zh-CN': '一周内', 'zh-HK': '一週內' } },
+  { id: '1_2_weeks', label: { en: 'Within 1 month', 'zh-CN': '一个月内', 'zh-HK': '一個月內' } },
+  { id: 'within_month', label: { en: 'Within 3 months', 'zh-CN': '三个月内', 'zh-HK': '三個月內' } },
+  { id: 'exploring', label: { en: 'No specific timeline', 'zh-CN': '没有特定时间', 'zh-HK': '冇特定時間' } },
+];
 
 const commonInsuranceProviders = [
   'Kaiser Permanente',
@@ -357,8 +357,9 @@ const copyByLocale = {
     questionLogisticsTransition: "Now let's find real therapists who match this.",
     questionModalityPreferences: 'What kind of help are you hoping therapy gives you?',
     questionCulturalContext: "Are there cultural, identity, or life experiences you'd like your therapist to understand?",
+    questionCulturePriority: 'How much should that shape your matches?',
     questionPayment: 'How would you like to handle payment?',
-    questionFinalLogistics: 'A few final matching details.',
+    questionTimeFrame: 'When would you like to start therapy?',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP code',
     areaCodeHint: 'Please enter a 5-digit U.S. ZIP code.',
@@ -425,6 +426,8 @@ const copyByLocale = {
     questionTransitions: '你最近有没有经历这些变化？',
     questionPhysical: '这些事情和身体状况有关吗？',
     questionIdentity: '这些事情和你自己、家人或关系有关吗？',
+    questionTimeFrame: '你希望多快开始咨询？',
+    questionCulturePriority: '这一点对你的匹配有多重要？',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP 邮编',
     areaCodeHint: '请输入 5 位美国 ZIP 邮编。',
@@ -476,6 +479,8 @@ const copyByLocale = {
     questionTransitions: '你最近有冇經歷以下轉變？',
     questionPhysical: '呢啲事同身體狀況有關嗎？',
     questionIdentity: '呢啲事同你自己、屋企人或者關係有關嗎？',
+    questionTimeFrame: '你希望幾快開始輔導？',
+    questionCulturePriority: '呢一點對你嘅配對有幾重要？',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP code',
     areaCodeHint: '請輸入 5 位美國 ZIP code。',
@@ -707,11 +712,13 @@ export function OnboardingFlow() {
       copy.questionModalityPreferences,
       copy.questionIdealProfile,
       copy.questionLogisticsTransition,
+      copy.questionTherapyFor,
+      copy.questionTimeFrame,
       copy.questionLanguage,
       copy.questionCulturalContext,
+      copy.questionCulturePriority,
       copy.questionAreaCode,
       copy.questionPayment,
-      copy.questionFinalLogistics,
     ],
     [copy]
   );
@@ -796,11 +803,18 @@ export function OnboardingFlow() {
     return () => window.clearInterval(timer);
   }, [copy.intro, currentQuestion, introStage, typedIntro]);
 
+  const culturePriorityIsRelevant =
+    formData.logistics.culturalContextNeeds.length > 0 &&
+    !formData.logistics.culturalContextNeeds.includes('no strong preference');
+
   const currentStepValid = useMemo(() => {
-    if (step === 8) {
-      return STYLE_SCENARIOS.every((scenario) =>
-        formData.styleScenarioResponses.some((response) => response.scenarioId === scenario.id && response.bestCardId)
-      );
+    if (step === 0) {
+      return STYLE_SCENARIOS.every((scenario) => {
+        const response = formData.styleScenarioResponses.find((entry) => entry.scenarioId === scenario.id);
+        if (!response) return false;
+        if (response.selectedCardIds && response.selectedCardIds.length > 0) return true;
+        return Boolean(response.bestCardId);
+      });
     }
     if (step >= 1 && step <= 4) {
       const category = LIFE_ASPECT_CATEGORY_BY_STEP[step as 1 | 2 | 3 | 4];
@@ -812,21 +826,29 @@ export function OnboardingFlow() {
     }
     if (step === 5) return formData.modalityPreferenceIds.length > 0 && formData.modalityPreferenceIds.length <= 3;
     if (step === 6 || step === 7) return true;
-    if (step === 8) return formData.logistics.languagePriority === 'flexible' || [...formData.logistics.requiredLanguages, ...formData.logistics.preferredLanguages].length > 0;
-    if (step === 9) return formData.logistics.culturalContextNeeds.length > 0;
-    if (step === 10) return /^\d{5}$/.test(formData.areaCode.trim()) && formData.carePreference !== '';
-    if (step === 11) {
+    if (step === 8) return formData.therapyFor !== '';
+    if (step === 9) return formData.logistics.availability !== '';
+    if (step === 10) return formData.logistics.languagePriority === 'flexible' || [...formData.logistics.requiredLanguages, ...formData.logistics.preferredLanguages].length > 0;
+    if (step === 11) return formData.logistics.culturalContextNeeds.length > 0;
+    if (step === 12) return true;
+    if (step === 13) return /^\d{5}$/.test(formData.areaCode.trim()) && formData.carePreference !== '';
+    if (step === 14) {
       if (!formData.logistics.paymentPreference) return false;
       if (formData.logistics.paymentPreference === 'insurance') return formData.insuranceProvider.trim().length > 0;
       if (formData.logistics.paymentPreference === 'out_of_pocket' || formData.logistics.paymentPreference === 'sliding_scale') return formData.logistics.budgetRange !== '';
       return true;
     }
-    if (step === 12) return formData.therapyFor !== '' && formData.logistics.availability !== '';
     return true;
   }, [formData, step]);
 
   const getAnswerForStep = (targetStep: Step) => {
-    if (targetStep === 0) return `${formData.styleScenarioResponses.length} style scenarios completed`;
+    if (targetStep === 0) {
+      const totalSelected = formData.styleScenarioResponses.reduce((sum, response) => {
+        if (response.selectedCardIds && response.selectedCardIds.length > 0) return sum + response.selectedCardIds.length;
+        return sum + (response.bestCardId ? 1 : 0);
+      }, 0);
+      return `${totalSelected} preferred responses across ${STYLE_SCENARIOS.length} scenarios`;
+    }
     if (targetStep >= 1 && targetStep <= 4) {
       const category = LIFE_ASPECT_CATEGORY_BY_STEP[targetStep as 1 | 2 | 3 | 4];
       if (formData.lifeAspectSkippedByCategory[category]) return copy.skippedReply;
@@ -839,22 +861,32 @@ export function OnboardingFlow() {
     if (targetStep === 5) return formData.modalityPreferenceIds.map((id) => MODALITY_PREFERENCE_OPTIONS.find((option) => option.id === id)?.title ?? id).join(', ');
     if (targetStep === 6) return idealProfile.title;
     if (targetStep === 7) return 'Continue to matching details';
-    if (targetStep === 8) {
+    if (targetStep === 8 && formData.therapyFor) {
+      return getOptionLabel(therapyForOptions, formData.therapyFor, locale);
+    }
+    if (targetStep === 9 && formData.logistics.availability) {
+      return getOptionLabel(availabilityOptions, formData.logistics.availability, locale);
+    }
+    if (targetStep === 10) {
       if (formData.logistics.languagePriority === 'flexible') return 'No strong language preference';
       return [...formData.logistics.requiredLanguages, ...formData.logistics.preferredLanguages].join(', ');
     }
-    if (targetStep === 9) return formData.logistics.culturalContextNeeds.join(', ');
-    if (targetStep === 10 && formData.carePreference) return `${formData.areaCode} / ${getOptionLabel(carePreferenceOptions, formData.carePreference, locale)}`;
-    if (targetStep === 11) {
+    if (targetStep === 11) return formData.logistics.culturalContextNeeds.join(', ');
+    if (targetStep === 12) {
+      if (!culturePriorityIsRelevant) return '';
+      const priorityLabels: Record<typeof formData.logistics.culturePriority, string> = {
+        high: 'High - strongly shape my matches',
+        medium: 'Medium - it matters',
+        low: 'Low - nice to have',
+      };
+      return priorityLabels[formData.logistics.culturePriority];
+    }
+    if (targetStep === 13 && formData.carePreference) return `${formData.areaCode} / ${getOptionLabel(carePreferenceOptions, formData.carePreference, locale)}`;
+    if (targetStep === 14) {
       const payment = paymentPreferenceOptions.find((option) => option.id === formData.logistics.paymentPreference)?.label ?? '';
       const insurance = formData.insuranceProvider.trim();
       const budget = formatBudgetRange(formData.logistics.budgetRange);
       return [payment, insurance && `Insurance: ${insurance}`, formData.logistics.budgetRange && `Budget: ${budget}`].filter(Boolean).join(' / ');
-    }
-    if (targetStep === 12 && formData.therapyFor) {
-      const therapyFor = getOptionLabel(therapyForOptions, formData.therapyFor, locale);
-      const availability = availabilityOptions.find((option) => option.id === formData.logistics.availability)?.label;
-      return [therapyFor, availability].filter(Boolean).join(' / ');
     }
     return '';
   };
@@ -866,7 +898,11 @@ export function OnboardingFlow() {
 
   const goNext = () => {
     if (!currentStepValid) return;
-    setStep((prev) => (prev < TOTAL_STEPS - 1 ? prev + 1 : prev));
+    setStep((prev) => {
+      if (prev >= TOTAL_STEPS - 1) return prev;
+      if (prev === 11 && !culturePriorityIsRelevant) return 13;
+      return prev + 1;
+    });
   };
 
   const skipLifeAspectStep = () => {
@@ -979,10 +1015,18 @@ export function OnboardingFlow() {
     });
   };
 
-  const selectStyleScenarioCard = (scenarioId: string, cardId: string) => {
+  const toggleStyleScenarioCard = (scenarioId: string, cardId: string) => {
     setFormData((prev) => {
-      const existing = prev.styleScenarioResponses.filter((response) => response.scenarioId !== scenarioId);
-      const styleScenarioResponses = [...existing, { scenarioId, bestCardId: cardId }];
+      const existing = prev.styleScenarioResponses.find((response) => response.scenarioId === scenarioId);
+      const previousSelected = existing?.selectedCardIds ?? (existing?.bestCardId ? [existing.bestCardId] : []);
+      const nextSelected = previousSelected.includes(cardId)
+        ? previousSelected.filter((id) => id !== cardId)
+        : [...previousSelected, cardId];
+      const others = prev.styleScenarioResponses.filter((response) => response.scenarioId !== scenarioId);
+      const styleScenarioResponses =
+        nextSelected.length === 0
+          ? others
+          : [...others, { scenarioId, selectedCardIds: nextSelected, bestCardId: nextSelected[0] }];
       const userStyleVector = scoreUserStyleScenarios(styleScenarioResponses);
 
       return {
@@ -1044,7 +1088,7 @@ export function OnboardingFlow() {
   };
 
   const renderAnswerControls = () => {
-    if (step === 8) {
+    if (step === 10) {
       const activeLanguageList = formData.logistics.languagePriority === 'required' ? formData.logistics.requiredLanguages : formData.logistics.preferredLanguages;
       return (
         <div className="space-y-5">
@@ -1080,7 +1124,7 @@ export function OnboardingFlow() {
       );
     }
 
-    if (step === 10) {
+    if (step === 13) {
       const showZipError = formData.areaCode.length > 0 && !currentStepValid;
       return (
         <div className="space-y-5">
@@ -1123,123 +1167,46 @@ export function OnboardingFlow() {
       );
     }
 
-    const simpleOptions = step === 12 ? therapyForOptions : null;
-    if (simpleOptions) {
+    if (step === 8) {
       return (
-        <div className="space-y-5">
-          <div className="flex flex-wrap gap-3">
-            {simpleOptions.map((option) => {
-              const selected = formData.therapyFor === option.id;
-              return (
-                <button
-                  type="button"
-                  key={option.id}
-                  onClick={() =>
-                    setFormData((prev) => ({ ...prev, therapyFor: option.id as OnboardingFormData['therapyFor'] }))
-                  }
-                  className={chipClass(selected)}
-                >
-                  {option.label[locale]}
-                  {selected && <Check className="h-4 w-4" />}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {availabilityOptions.map((option) => {
-              const selected = formData.logistics.availability === option.id;
-              return (
-                <button
-                  type="button"
-                  key={option.id}
-                  onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, availability: option.id } }))}
-                  className={chipClass(selected)}
-                >
-                  {option.label}
-                  {selected && <Check className="h-4 w-4" />}
-                </button>
-              );
-            })}
-          </div>
-          {false && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insuranceProviderLabel ?? copyByLocale.en.insuranceProviderLabel}</span>
-                <input
-                  type="text"
-                  list="insurance-provider-options"
-                  value={formData.insuranceProvider}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, insuranceProvider: event.target.value }))}
-                  placeholder={copy.insuranceProviderPlaceholder ?? copyByLocale.en.insuranceProviderPlaceholder}
-                  className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
-                />
-                <datalist id="insurance-provider-options">
-                  {commonInsuranceProviders.map((provider) => (
-                    <option key={provider} value={provider} />
-                  ))}
-                </datalist>
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.insurancePlanLabel ?? copyByLocale.en.insurancePlanLabel}</span>
-                <input
-                  type="text"
-                  list="insurance-plan-options"
-                  value={formData.insurancePlan}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, insurancePlan: event.target.value }))}
-                  placeholder={copy.insurancePlanPlaceholder ?? copyByLocale.en.insurancePlanPlaceholder}
-                  className="h-12 w-full rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
-                />
-                <datalist id="insurance-plan-options">
-                  {commonInsurancePlans.map((plan) => (
-                    <option key={plan} value={plan} />
-                  ))}
-                </datalist>
-              </label>
-              <div className="space-y-3 sm:col-span-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">
-                  {copy.insuranceQuickPickLabel ?? copyByLocale.en.insuranceQuickPickLabel}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {commonInsuranceProviders.map((provider) => {
-                    const selected = formData.insuranceProvider === provider;
-                    return (
-                      <button
-                        key={provider}
-                        type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, insuranceProvider: provider }))}
-                        className={chipClass(selected)}
-                      >
-                        {provider}
-                        {selected && <Check className="h-4 w-4" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="space-y-3 sm:col-span-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#8b8479]">
-                  {copy.insurancePlanQuickPickLabel ?? copyByLocale.en.insurancePlanQuickPickLabel}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {commonInsurancePlans.map((plan) => {
-                    const selected = formData.insurancePlan === plan;
-                    return (
-                      <button
-                        key={plan}
-                        type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, insurancePlan: plan }))}
-                        className={chipClass(selected)}
-                      >
-                        {plan}
-                        {selected && <Check className="h-4 w-4" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <p className="text-sm font-medium text-[#746c62] sm:col-span-2">{copy.insuranceHint ?? copyByLocale.en.insuranceHint}</p>
-            </div>
-          )}
+        <div className="flex flex-wrap gap-3">
+          {therapyForOptions.map((option) => {
+            const selected = formData.therapyFor === option.id;
+            return (
+              <button
+                type="button"
+                key={option.id}
+                onClick={() =>
+                  setFormData((prev) => ({ ...prev, therapyFor: option.id as OnboardingFormData['therapyFor'] }))
+                }
+                className={chipClass(selected)}
+              >
+                {option.label[locale]}
+                {selected && <Check className="h-4 w-4" />}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (step === 9) {
+      return (
+        <div className="flex flex-wrap gap-3">
+          {availabilityOptions.map((option) => {
+            const selected = formData.logistics.availability === option.id;
+            return (
+              <button
+                type="button"
+                key={option.id}
+                onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, availability: option.id } }))}
+                className={chipClass(selected)}
+              >
+                {option.label[locale]}
+                {selected && <Check className="h-4 w-4" />}
+              </button>
+            );
+          })}
         </div>
       );
     }
@@ -1249,7 +1216,14 @@ export function OnboardingFlow() {
         <div className="space-y-6">
           <p className="text-sm font-medium text-[#746c62]">{copy.styleHint}</p>
           {STYLE_SCENARIOS.map((scenario, scenarioIndex) => {
-            const selectedCardId = formData.styleScenarioResponses.find((response) => response.scenarioId === scenario.id)?.bestCardId;
+            const response = formData.styleScenarioResponses.find((entry) => entry.scenarioId === scenario.id);
+            const selectedIds = new Set(
+              response?.selectedCardIds && response.selectedCardIds.length > 0
+                ? response.selectedCardIds
+                : response?.bestCardId
+                  ? [response.bestCardId]
+                  : []
+            );
 
             return (
               <section key={scenario.id} className="rounded-[24px] border border-[#d8d0c2] bg-[#f7f2e8] p-4 shadow-[0_16px_34px_rgba(97,86,68,0.08)]">
@@ -1257,17 +1231,19 @@ export function OnboardingFlow() {
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8b8479]">Scenario {scenarioIndex + 1}</p>
                   <h3 className="mt-1 text-lg font-semibold text-[#332d28]">{scenario.question}</h3>
                   <p className="mt-2 text-sm leading-6 text-[#746c62]">{scenario.subtext}</p>
+                  <p className="mt-2 text-xs font-medium text-[#8b8479]">Pick one or more responses that feel helpful.</p>
                 </div>
 
                 <div className="grid gap-3">
                   {scenario.cards.map((card) => {
-                    const selected = selectedCardId === card.id;
+                    const selected = selectedIds.has(card.id);
 
                     return (
                       <button
                         type="button"
                         key={card.id}
-                        onClick={() => selectStyleScenarioCard(scenario.id, card.id)}
+                        onClick={() => toggleStyleScenarioCard(scenario.id, card.id)}
+                        aria-pressed={selected}
                         className={[
                           'w-full rounded-[16px] border bg-[#fffdf8] p-4 text-left shadow-sm transition focus:outline-none focus:ring-4 focus:ring-[#b7c0ae]/30',
                           selected ? 'border-[#6e7b64] ring-2 ring-[#6e7b64]/25' : 'border-[#e1d8c9] hover:border-[#7a866f]',
@@ -1297,7 +1273,7 @@ export function OnboardingFlow() {
           })}
 
           <div className="rounded-[16px] bg-[#fffdf8] p-4 text-sm leading-6 text-[#746c62]">
-            Choose the response that feels most helpful in each scenario. The app uses these choices to describe your preferred conversation style.
+            Pick every response that feels helpful in each scenario. The app blends your selections to describe your preferred conversation style.
           </div>
               </div>
       );
@@ -1388,44 +1364,52 @@ export function OnboardingFlow() {
       );
     }
 
-    if (step === 9) {
+    if (step === 11) {
       return (
-        <div className="space-y-5">
-          <div className="flex flex-wrap gap-3">
-            {CULTURAL_CONTEXT_OPTIONS.map((option) => {
-              const selected = formData.logistics.culturalContextNeeds.includes(option);
-              return (
-                <button type="button" key={option} onClick={() => toggleCulturalContext(option)} className={chipClass(selected)}>
-                  {option}
-                  {selected && <Check className="h-4 w-4" />}
-                </button>
-              );
-            })}
-          </div>
-          {!formData.logistics.culturalContextNeeds.includes('no strong preference') && (
-            <div className="flex flex-wrap gap-3">
-              {[
-                { id: 'high', label: 'High - strongly shape my matches' },
-                { id: 'medium', label: 'Medium - it matters' },
-                { id: 'low', label: 'Low - nice to have' },
-              ].map((option) => (
-                <button
-                  type="button"
-                  key={option.id}
-                  onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, culturePriority: option.id as OnboardingFormData['logistics']['culturePriority'] } }))}
-                  className={chipClass(formData.logistics.culturePriority === option.id)}
-                >
-                  {option.label}
-                  {formData.logistics.culturePriority === option.id && <Check className="h-4 w-4" />}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex flex-wrap gap-3">
+          {CULTURAL_CONTEXT_OPTIONS.map((option) => {
+            const selected = formData.logistics.culturalContextNeeds.includes(option);
+            return (
+              <button type="button" key={option} onClick={() => toggleCulturalContext(option)} className={chipClass(selected)}>
+                {option}
+                {selected && <Check className="h-4 w-4" />}
+              </button>
+            );
+          })}
         </div>
       );
     }
 
-    if (step === 11) {
+    if (step === 12) {
+      if (formData.logistics.culturalContextNeeds.includes('no strong preference')) {
+        return (
+          <p className="text-sm font-medium text-[#746c62]">
+            You picked &ldquo;no strong preference&rdquo;, so we&apos;ll skip prioritizing this. Continue when ready.
+          </p>
+        );
+      }
+      return (
+        <div className="flex flex-wrap gap-3">
+          {[
+            { id: 'high', label: 'High - strongly shape my matches' },
+            { id: 'medium', label: 'Medium - it matters' },
+            { id: 'low', label: 'Low - nice to have' },
+          ].map((option) => (
+            <button
+              type="button"
+              key={option.id}
+              onClick={() => setFormData((prev) => ({ ...prev, logistics: { ...prev.logistics, culturePriority: option.id as OnboardingFormData['logistics']['culturePriority'] } }))}
+              className={chipClass(formData.logistics.culturePriority === option.id)}
+            >
+              {option.label}
+              {formData.logistics.culturePriority === option.id && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (step === 14) {
       return (
         <div className="space-y-5">
           <div className="flex flex-wrap gap-3">
@@ -1678,7 +1662,7 @@ export function OnboardingFlow() {
               </section>
             </div>
 
-            {recommendations.slice(0, 4).map((recommendation, index) => {
+            {recommendations.slice(0, Math.max(3, Math.min(recommendations.length, 5))).map((recommendation, index) => {
               const therapist = recommendation.therapist;
               const isSaved = Boolean(savedTherapists[therapist.id]);
               const recommendedModels = recommendation.recommendedModels.length > 0 ? recommendation.recommendedModels.slice(0, 5) : therapist.therapyModels.slice(0, 5);
@@ -1936,7 +1920,13 @@ export function OnboardingFlow() {
               <div className="mt-5 flex flex-col-reverse gap-3 border-t border-[#d8d0c2] pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
-                  onClick={() => setStep((prev) => (prev > 0 ? ((prev - 1) as Step) : prev))}
+                  onClick={() =>
+                    setStep((prev) => {
+                      if (prev <= 0) return prev;
+                      if (prev === 13 && !culturePriorityIsRelevant) return 11;
+                      return (prev - 1) as Step;
+                    })
+                  }
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#40382f] transition hover:border-[#7a866f] hover:bg-[#f1ede3] disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={step === 0 || status === 'saving'}
                 >

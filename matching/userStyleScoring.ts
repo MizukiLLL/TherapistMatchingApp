@@ -171,11 +171,18 @@ export function scoreUserStyleScenarios(choices: UserStyleScenarioChoice[]): Sty
   let totalWeight = 0;
 
   for (const choice of choices) {
-    const weightedCards = [
-      { card: findCard(choice.scenarioId, choice.bestCardId), weight: 1 },
-      { card: findCard(choice.scenarioId, choice.secondCardId), weight: 0.5 },
-      { card: findCard(choice.scenarioId, choice.leastCardId), weight: -0.5 },
-    ];
+    const weightedCards: Array<{ card: StyleScenarioCard | undefined; weight: number }> = [];
+
+    if (choice.selectedCardIds && choice.selectedCardIds.length > 0) {
+      const perCardWeight = 1 / choice.selectedCardIds.length;
+      for (const cardId of choice.selectedCardIds) {
+        weightedCards.push({ card: findCard(choice.scenarioId, cardId), weight: perCardWeight });
+      }
+    } else {
+      weightedCards.push({ card: findCard(choice.scenarioId, choice.bestCardId), weight: 1 });
+      weightedCards.push({ card: findCard(choice.scenarioId, choice.secondCardId), weight: 0.5 });
+      weightedCards.push({ card: findCard(choice.scenarioId, choice.leastCardId), weight: -0.5 });
+    }
 
     for (const { card, weight } of weightedCards) {
       if (!card) continue;

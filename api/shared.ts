@@ -146,8 +146,9 @@ export function generateIdealProfile(body: Record<string, unknown>) {
 
 export function generateMatches(body: Record<string, unknown>) {
   const userStyleVector = styleVector(body);
+  const MIN_RESULTS = 3;
 
-  return therapists
+  const scored = therapists
     .map((therapist) => {
       const areaCode = normalize(body.areaCode);
       const therapyTypes = stringList(body.therapyTypes);
@@ -181,12 +182,19 @@ export function generateMatches(body: Record<string, unknown>) {
         if (!insurancePlan) return true;
         return (insurance.plan ?? '').toLowerCase() === insurancePlan.toLowerCase();
       });
-      if (languagePriority === 'required' && requiredLanguages.length > 0 && !requiredLanguages.some((language) => therapist.languages.some((listed) => listed.toLowerCase() === language.toLowerCase() || (/mandarin|cantonese|chinese/i.test(language) && /mandarin|cantonese|chinese/i.test(listed))))) {
-        return null;
-      }
-      if (paymentPreference === 'insurance' && insuranceProvider && matchingInsurance.length === 0) {
-        return null;
-      }
+      const languageRequiredMissing =
+        languagePriority === 'required' &&
+        requiredLanguages.length > 0 &&
+        !requiredLanguages.some((language) =>
+          therapist.languages.some(
+            (listed) =>
+              listed.toLowerCase() === language.toLowerCase() ||
+              (/mandarin|cantonese|chinese/i.test(language) && /mandarin|cantonese|chinese/i.test(listed))
+          )
+        );
+      const insuranceRequiredMissing =
+        paymentPreference === 'insurance' && Boolean(insuranceProvider) && matchingInsurance.length === 0;
+      const softFiltered = languageRequiredMissing || insuranceRequiredMissing;
       const areaScore = areaCode && therapist.areaCodesServed.includes(areaCode) ? 100 : 45;
       const expertiseScore = therapyTypes.length === 0 ? 65 : Math.round((matchedTherapyTypes.length / therapyTypes.length) * 100);
       const languageTargets = [...requiredLanguages, ...preferredLanguages, preferredLanguage].filter(Boolean);
@@ -214,11 +222,12 @@ export function generateMatches(body: Record<string, unknown>) {
       const adjustedStyleFit = round2(cnipScore / 100);
 
       return {
+        softFiltered,
         id: `match-${normalize(body.userId) || 'anonymous'}-${therapist.id}-${Date.now()}`,
         userId: normalize(body.userId) || 'anonymous',
         therapistId: therapist.id,
         therapist: publicTherapist(therapist),
-        hard_constraints_pass: areaScore === 100 && matchedTherapyTypes.length > 0 && (!insuranceProvider || matchingInsurance.length > 0),
+        hard_constraints_pass: !softFiltered && areaScore === 100 && matchedTherapyTypes.length > 0 && (!insuranceProvider || matchingInsurance.length > 0),
         hard_constraint_reasons: [
           areaScore === 100 ? `Serves ZIP code ${areaCode}.` : `Closest available ZIP coverage: ${therapist.areaCodesServed.slice(0, 3).join(', ')}.`,
           matchedTherapyTypes.length > 0 ? `Supports ${matchedTherapyTypes.slice(0, 3).join(', ')}.` : `Related profile focus: ${therapist.therapyTypes.slice(0, 3).join(', ')}.`,
@@ -269,6 +278,13 @@ export function generateMatches(body: Record<string, unknown>) {
         ranked_at: new Date().toISOString(),
       };
     })
-    .filter((match): match is NonNullable<typeof match> => match !== null)
     .sort((a, b) => b.final_score - a.final_score || a.therapist.fullName.localeCompare(b.therapist.fullName));
+
+  const hardPassed = scored.filter((match) => !match.softFiltered);
+  let combined = hardPassed;
+  if (combined.length < MIN_RESULTS) {
+    const fallback = scored.filter((match) => match.softFiltered).slice(0, MIN_RESULTS - combined.length);
+    combined = [...combined, ...fallback];
+  }
+  return combined.map(({ softFiltered: _softFiltered, ...rest }) => rest);
 }
