@@ -115,6 +115,9 @@ export async function pushPreferencesToJotform(record: Record<string, unknown>):
   set('cnipStyle', cnipStyleSummary);
   set('submissionJson', JSON.stringify(record));
 
+  const mappedKeys = Array.from(body.keys()).map((key) => key.replace(/^submission\[/, '').replace(/\]$/, ''));
+  console.log(`[jotform-mirror] attempt form=${formId} fields=${mappedKeys.join(',')}`);
+
   try {
     const result = await fetch(
       `https://api.jotform.com/form/${formId}/submissions?apiKey=${encodeURIComponent(apiKey)}`,
@@ -124,9 +127,11 @@ export async function pushPreferencesToJotform(record: Record<string, unknown>):
         body,
       }
     );
+    const responseText = await result.text().catch(() => '');
     if (!result.ok) {
-      const text = await result.text().catch(() => '');
-      console.warn(`[jotform-mirror] HTTP ${result.status}: ${text}`);
+      console.warn(`[jotform-mirror] HTTP ${result.status}: ${responseText}`);
+    } else {
+      console.log(`[jotform-mirror] success HTTP ${result.status}: ${responseText.slice(0, 200)}`);
     }
   } catch (error) {
     console.warn('[jotform-mirror] request failed:', error);
