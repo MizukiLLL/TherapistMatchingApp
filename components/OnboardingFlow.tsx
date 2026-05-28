@@ -24,7 +24,7 @@ type CnipStyleOption = {
 };
 type SavedTherapistsById = Record<string, PsychologyTodayTherapistProfile>;
 
-const TOTAL_STEPS = 15;
+const TOTAL_STEPS = 16;
 const SAVED_THERAPISTS_STORAGE_KEY = 'bettermatch-saved-therapists';
 
 const LIFE_ASPECT_CATEGORY_BY_STEP: Record<1 | 2 | 3 | 4, LifeAspectCategory> = {
@@ -118,6 +118,7 @@ const emptyLifeAspectSkipped: OnboardingFormData['lifeAspectSkippedByCategory'] 
 };
 
 const EMPTY_FORM: OnboardingFormData = {
+  email: '',
   areaCode: '',
   preferredLanguage: 'English',
   therapyFor: '',
@@ -359,6 +360,11 @@ const copyByLocale = {
     questionCulturalContext: "Are there cultural, identity, or life experiences you'd like your therapist to understand?",
     questionCulturePriority: 'How much should that shape your matches?',
     questionPayment: 'How would you like to handle payment?',
+    questionEmail: 'Would you like to stay connected? Enter your email for therapist updates.',
+    emailLabel: 'Email',
+    emailPlaceholder: 'you@example.com',
+    emailSkip: 'No thanks, skip this',
+    emailInvalid: "That email doesn't look quite right. You can also skip.",
     questionTimeFrame: 'When would you like to start therapy?',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
     areaCodeLabel: 'ZIP code',
@@ -426,6 +432,11 @@ const copyByLocale = {
     questionTransitions: '你最近有没有经历这些变化？',
     questionPhysical: '这些事情和身体状况有关吗？',
     questionIdentity: '这些事情和你自己、家人或关系有关吗？',
+    questionEmail: '想保持联系吗？留下邮箱接收治疗师更新。',
+    emailLabel: '邮箱',
+    emailPlaceholder: 'you@example.com',
+    emailSkip: '不用了，跳过',
+    emailInvalid: '邮箱格式看起来不太对，你也可以跳过。',
     questionTimeFrame: '你希望多快开始咨询？',
     questionCulturePriority: '这一点对你的匹配有多重要？',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
@@ -479,6 +490,11 @@ const copyByLocale = {
     questionTransitions: '你最近有冇經歷以下轉變？',
     questionPhysical: '呢啲事同身體狀況有關嗎？',
     questionIdentity: '呢啲事同你自己、屋企人或者關係有關嗎？',
+    questionEmail: '想保持聯絡嗎？留低電郵收新治療師資訊。',
+    emailLabel: '電郵',
+    emailPlaceholder: 'you@example.com',
+    emailSkip: '唔使啦，跳過',
+    emailInvalid: '電郵格式好似有啲怪，你都可以跳過。',
     questionTimeFrame: '你希望幾快開始輔導？',
     questionCulturePriority: '呢一點對你嘅配對有幾重要？',
     questionConversationStyle: 'Four therapists are joining the chat. Which conversation styles would feel helpful?',
@@ -719,6 +735,7 @@ export function OnboardingFlow() {
       copy.questionCulturePriority,
       copy.questionAreaCode,
       copy.questionPayment,
+      copy.questionEmail,
     ],
     [copy]
   );
@@ -737,6 +754,7 @@ export function OnboardingFlow() {
             (styleScenarioResponses.length > 0 ? scoreUserStyleScenarios(styleScenarioResponses) : legacyProfileToStyleVector(cnipPreferenceProfile));
 
           setFormData({
+            email: saved.data.email ?? '',
             areaCode: saved.data.areaCode ?? '',
             preferredLanguage: saved.data.preferredLanguage ?? 'English',
             therapyFor: saved.data.therapyFor ?? '',
@@ -838,6 +856,7 @@ export function OnboardingFlow() {
       if (formData.logistics.paymentPreference === 'out_of_pocket' || formData.logistics.paymentPreference === 'sliding_scale') return formData.logistics.budgetRange !== '';
       return true;
     }
+    if (step === 15) return true;
     return true;
   }, [formData, step]);
 
@@ -887,6 +906,9 @@ export function OnboardingFlow() {
       const insurance = formData.insuranceProvider.trim();
       const budget = formatBudgetRange(formData.logistics.budgetRange);
       return [payment, insurance && `Insurance: ${insurance}`, formData.logistics.budgetRange && `Budget: ${budget}`].filter(Boolean).join(' / ');
+    }
+    if (targetStep === 15) {
+      return formData.email.trim() || 'Skipped — no email shared';
     }
     return '';
   };
@@ -1186,6 +1208,39 @@ export function OnboardingFlow() {
               </button>
             );
           })}
+        </div>
+      );
+    }
+
+    if (step === 15) {
+      const trimmedEmail = formData.email.trim();
+      const showEmailError = trimmedEmail.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+      const skipEmail = () => {
+        setFormData((prev) => ({ ...prev, email: '' }));
+      };
+      return (
+        <div className="space-y-4">
+          <label className="block" htmlFor="onboarding-email">
+            <span className="mb-2 block text-sm font-medium text-[#746c62]">{copy.emailLabel}</span>
+            <input
+              id="onboarding-email"
+              type="email"
+              autoComplete="email"
+              value={formData.email}
+              onChange={(event) => setFormData((prev) => ({ ...prev, email: event.target.value }))}
+              placeholder={copy.emailPlaceholder}
+              className="h-12 w-full max-w-md rounded-full border border-[#d2c7b4] bg-[#fbf7ef] px-5 text-sm font-medium text-[#332d28] shadow-sm outline-none transition placeholder:text-[#a39a8c] focus:border-[#7a866f] focus:ring-4 focus:ring-[#b7c0ae]/25"
+            />
+          </label>
+          {showEmailError && <p className="text-sm font-medium text-red-600">{copy.emailInvalid}</p>}
+          <button
+            type="button"
+            onClick={skipEmail}
+            className={chipClass(trimmedEmail.length === 0)}
+          >
+            {copy.emailSkip}
+            {trimmedEmail.length === 0 && <Check className="h-4 w-4" />}
+          </button>
         </div>
       );
     }

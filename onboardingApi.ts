@@ -76,7 +76,7 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
     const userResponse = await fetch(apiPath('/users'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: userId, preferredLanguage: data.preferredLanguage, areaCode: data.areaCode }),
+      body: JSON.stringify({ id: userId, email: data.email, preferredLanguage: data.preferredLanguage, areaCode: data.areaCode }),
     });
 
     if (!userResponse.ok) {
@@ -87,6 +87,7 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        email: data.email,
         areaCode: data.areaCode,
         preferredLanguage: data.preferredLanguage,
         therapyFor: data.therapyFor,

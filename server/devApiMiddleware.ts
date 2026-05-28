@@ -12,6 +12,7 @@ import {
   upsertUser,
   upsertUserPreferences,
 } from './backendStore.ts';
+import { pushToJotform } from './jotformMirror.ts';
 import { buildMatchGenerationResponse, generateMatches, resolveMatchPreferences } from './matchingEngine.ts';
 import type { MatchGenerationRequest } from './matchingEngine.ts';
 import { fetchPsychologyTodayDirectoryProfiles, fetchPsychologyTodayProfile, normalizePsychologyTodayProfile } from './psychologyTodayProfile.ts';
@@ -812,6 +813,7 @@ export function createDevApiMiddleware() {
         }
 
         const preferences = upsertUserPreferences(userId, {
+          email: typeof body.email === 'string' ? body.email : undefined,
           areaCode: typeof body.areaCode === 'string' ? body.areaCode : undefined,
           preferredLanguage: typeof body.preferredLanguage === 'string' ? body.preferredLanguage : undefined,
           therapyFor: typeof body.therapyFor === 'string' ? body.therapyFor as any : undefined,
@@ -828,6 +830,8 @@ export function createDevApiMiddleware() {
           styleScenarioResponses: Array.isArray(body.styleScenarioResponses) ? body.styleScenarioResponses as any : undefined,
           userStyleVector: typeof body.userStyleVector === 'object' && body.userStyleVector !== null ? body.userStyleVector as any : undefined,
         });
+
+        void pushToJotform(preferences);
 
         sendJson(response, 200, { data: preferences });
       } catch (error) {

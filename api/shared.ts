@@ -60,6 +60,79 @@ export function normalize(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+export async function pushPreferencesToJotform(record: Record<string, unknown>): Promise<void> {
+  const apiKey = process.env.JOTFORM_API_KEY;
+  const formId = process.env.JOTFORM_FORM_ID;
+  const fieldMapJson = process.env.JOTFORM_FIELD_MAP;
+  if (!apiKey || !formId || !fieldMapJson) return;
+
+  let fieldMap: Record<string, number | string>;
+  try {
+    fieldMap = JSON.parse(fieldMapJson);
+  } catch (error) {
+    console.warn('[jotform-mirror] JOTFORM_FIELD_MAP is not valid JSON; skipping push.', error);
+    return;
+  }
+
+  const lifeAspects = (record.lifeAspectsByCategory ?? {}) as Record<string, unknown>;
+  const concernsSummary = [
+    ...((lifeAspects.symptomsAndDiagnoses as unknown[]) ?? []),
+    ...((lifeAspects.lifeStagesAndTransitions as unknown[]) ?? []),
+    ...((lifeAspects.physicalHealthRelatedIssues as unknown[]) ?? []),
+    ...((lifeAspects.selfIdentityAndSocialRelationships as unknown[]) ?? []),
+  ].map(String).join(', ');
+
+  const styles = Array.isArray(record.cnipConversationStyles) ? record.cnipConversationStyles.map(String) : [];
+  const vector = (record.userStyleVector ?? null) as null | {
+    therapist_directive: number;
+    emotionally_intensive: number;
+    past_focused: number;
+    support_focused: number;
+  };
+  const cnipStyleSummary = [
+    styles.length ? `Picked styles: ${styles.join(', ')}` : 'Picked styles: none',
+    vector
+      ? `Vector — directive: ${vector.therapist_directive}, emotional: ${vector.emotionally_intensive}, past-focused: ${vector.past_focused}, support-focused: ${vector.support_focused}`
+      : 'Vector: not scored',
+  ].join(' | ');
+
+  const logistics = (record.logistics ?? {}) as Record<string, unknown>;
+  const body = new URLSearchParams();
+  const set = (key: string, value: string) => {
+    const id = fieldMap[key];
+    if (id === undefined || id === null || id === '') return;
+    body.set(`submission[${id}]`, value);
+  };
+
+  set('email', normalize(record.email));
+  set('areaCode', normalize(record.areaCode));
+  set('preferredLanguage', normalize(record.preferredLanguage));
+  set('therapyFor', normalize(record.therapyFor));
+  set('carePreference', normalize(record.carePreference));
+  set('paymentPreference', normalize(logistics.paymentPreference));
+  set('availability', normalize(logistics.availability));
+  set('concernsSummary', concernsSummary);
+  set('cnipStyle', cnipStyleSummary);
+  set('submissionJson', JSON.stringify(record));
+
+  try {
+    const result = await fetch(
+      `https://api.jotform.com/form/${formId}/submissions?apiKey=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      }
+    );
+    if (!result.ok) {
+      const text = await result.text().catch(() => '');
+      console.warn(`[jotform-mirror] HTTP ${result.status}: ${text}`);
+    }
+  } catch (error) {
+    console.warn('[jotform-mirror] request failed:', error);
+  }
+}
+
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String).map((entry) => entry.trim()).filter(Boolean) : [];
 }

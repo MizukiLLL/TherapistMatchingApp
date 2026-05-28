@@ -1,4 +1,4 @@
-import { readJsonBody, sendJson } from '../../shared.js';
+import { pushPreferencesToJotform, readJsonBody, sendJson } from '../../shared.js';
 
 export default async function handler(request: any, response: any) {
   if (request.method !== 'POST') {
@@ -7,10 +7,14 @@ export default async function handler(request: any, response: any) {
   }
 
   const body = await readJsonBody(request);
+  const userId = request.query?.id ?? 'anonymous';
+
+  void pushPreferencesToJotform({ ...body, userId });
+
   sendJson(response, 200, {
     data: {
       ...body,
-      userId: request.query?.id ?? 'anonymous',
+      userId,
       updatedAt: new Date().toISOString(),
     },
   });

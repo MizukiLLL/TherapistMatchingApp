@@ -29,6 +29,68 @@ export async function readJsonBody(request) {
 export function normalize(value) {
     return typeof value === 'string' ? value.trim() : '';
 }
+export async function pushPreferencesToJotform(record) {
+    const apiKey = process.env.JOTFORM_API_KEY;
+    const formId = process.env.JOTFORM_FORM_ID;
+    const fieldMapJson = process.env.JOTFORM_FIELD_MAP;
+    if (!apiKey || !formId || !fieldMapJson)
+        return;
+    let fieldMap;
+    try {
+        fieldMap = JSON.parse(fieldMapJson);
+    }
+    catch (error) {
+        console.warn('[jotform-mirror] JOTFORM_FIELD_MAP is not valid JSON; skipping push.', error);
+        return;
+    }
+    const lifeAspects = (record.lifeAspectsByCategory ?? {});
+    const concernsSummary = [
+        ...((lifeAspects.symptomsAndDiagnoses) ?? []),
+        ...((lifeAspects.lifeStagesAndTransitions) ?? []),
+        ...((lifeAspects.physicalHealthRelatedIssues) ?? []),
+        ...((lifeAspects.selfIdentityAndSocialRelationships) ?? []),
+    ].map(String).join(', ');
+    const styles = Array.isArray(record.cnipConversationStyles) ? record.cnipConversationStyles.map(String) : [];
+    const vector = record.userStyleVector ?? null;
+    const cnipStyleSummary = [
+        styles.length ? `Picked styles: ${styles.join(', ')}` : 'Picked styles: none',
+        vector
+            ? `Vector — directive: ${vector.therapist_directive}, emotional: ${vector.emotionally_intensive}, past-focused: ${vector.past_focused}, support-focused: ${vector.support_focused}`
+            : 'Vector: not scored',
+    ].join(' | ');
+    const logistics = (record.logistics ?? {});
+    const body = new URLSearchParams();
+    const set = (key, value) => {
+        const id = fieldMap[key];
+        if (id === undefined || id === null || id === '')
+            return;
+        body.set(`submission[${id}]`, value);
+    };
+    set('email', normalize(record.email));
+    set('areaCode', normalize(record.areaCode));
+    set('preferredLanguage', normalize(record.preferredLanguage));
+    set('therapyFor', normalize(record.therapyFor));
+    set('carePreference', normalize(record.carePreference));
+    set('paymentPreference', normalize(logistics.paymentPreference));
+    set('availability', normalize(logistics.availability));
+    set('concernsSummary', concernsSummary);
+    set('cnipStyle', cnipStyleSummary);
+    set('submissionJson', JSON.stringify(record));
+    try {
+        const result = await fetch(`https://api.jotform.com/form/${formId}/submissions?apiKey=${encodeURIComponent(apiKey)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+        });
+        if (!result.ok) {
+            const text = await result.text().catch(() => '');
+            console.warn(`[jotform-mirror] HTTP ${result.status}: ${text}`);
+        }
+    }
+    catch (error) {
+        console.warn('[jotform-mirror] request failed:', error);
+    }
+}
 function stringList(value) {
     return Array.isArray(value) ? value.map(String).map((entry) => entry.trim()).filter(Boolean) : [];
 }

@@ -61,6 +61,7 @@ export type LogisticsDetails = {
 };
 
 export type OnboardingFormData = {
+  email: string;
   areaCode: string;
   preferredLanguage: PreferredLanguage;
   therapyFor: 'Myself' | 'Child' | 'Partner' | 'Family' | '';

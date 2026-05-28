@@ -14,6 +14,7 @@ export type UserRecord = {
 
 export type UserPreferenceRecord = {
   userId: string;
+  email?: string;
   areaCode: string;
   preferredLanguage?: string;
   therapyFor?: OnboardingFormData['therapyFor'];
@@ -160,6 +161,7 @@ export function upsertUserPreferences(userId: string, input: Partial<UserPrefere
   const therapyTypes = input.therapyTypes?.filter(Boolean) ?? input.lifeAspects?.filter(Boolean) ?? existing?.therapyTypes ?? [];
   const record: UserPreferenceRecord = {
     userId,
+    email: input.email?.trim() || existing?.email,
     areaCode: input.areaCode?.trim() || existing?.areaCode || '',
     preferredLanguage: input.preferredLanguage?.trim() || existing?.preferredLanguage,
     therapyFor: input.therapyFor ?? existing?.therapyFor,
@@ -268,6 +270,7 @@ export function getSavedOnboardingState(userId: string): SavedOnboardingState | 
   return {
     userId,
     data: {
+      email: preference.email ?? user.email ?? '',
       areaCode: preference.areaCode || user.areaCode || '',
       preferredLanguage: (preference.preferredLanguage || user.preferredLanguage || 'English') as OnboardingFormData['preferredLanguage'],
       therapyFor: preference.therapyFor ?? '',
