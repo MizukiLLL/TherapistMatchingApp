@@ -295,7 +295,7 @@ export default async function handler(request: any, response: any) {
     if (preferencesMatch && request.method === 'POST') {
       const body = await readJsonBody(request);
       const userId = decodeURIComponent(preferencesMatch[1]);
-      void pushPreferencesToJotform({ ...body, userId });
+      await pushPreferencesToJotform({ ...body, userId });
       sendJson(response, 200, {
         data: {
           ...body,

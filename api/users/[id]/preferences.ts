@@ -9,7 +9,7 @@ export default async function handler(request: any, response: any) {
   const body = await readJsonBody(request);
   const userId = request.query?.id ?? 'anonymous';
 
-  void pushPreferencesToJotform({ ...body, userId });
+  await pushPreferencesToJotform({ ...body, userId });
 
   sendJson(response, 200, {
     data: {
