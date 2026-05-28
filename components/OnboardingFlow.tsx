@@ -343,7 +343,7 @@ const copyByLocale = {
     save: 'Save answers',
     saveDraft: 'Save draft',
     saving: 'Saving...',
-    savedSuccess: 'Saved. Your answers are stored on this device and in the local database when available.',
+    savedSuccess: 'Your answers have been saved.',
     savedAtLabel: 'Last saved',
     requiredHint: 'Pick at least one option, type a note, or use "No, next" to continue.',
     questionLanguage: 'What language would you like to use?',
@@ -421,7 +421,7 @@ const copyByLocale = {
     save: '保存回答',
     saveDraft: '保存草稿',
     saving: '保存中...',
-    savedSuccess: '已保存。接下来可以进入匹配。',
+    savedSuccess: '你的回答已成功保存。',
     savedAtLabel: '上次保存',
     requiredHint: '请至少选一个选项、写一点补充，或者点“没有，下一个”。',
     questionLanguage: '你想用哪种语言？',
@@ -479,7 +479,7 @@ const copyByLocale = {
     save: '儲存回答',
     saveDraft: '儲存草稿',
     saving: '儲存中...',
-    savedSuccess: '已儲存。下一步可以開始配對。',
+    savedSuccess: '你嘅回答已成功儲存。',
     savedAtLabel: '上次儲存',
     requiredHint: '請至少揀一個選項、寫少少補充，或者撳「冇，下一題」。',
     questionLanguage: '你想用邊種語言？',
@@ -1084,9 +1084,9 @@ export function OnboardingFlow() {
       setSavedAt(saved.updatedAt);
       setStatus('saved');
       setShowRecommendations(true);
-    } catch {
+    } catch (error) {
       setStatus('error');
-      setErrorMessage(copy.submitError);
+      setErrorMessage(error instanceof Error ? error.message : copy.submitError);
     }
   };
 
@@ -1097,9 +1097,9 @@ export function OnboardingFlow() {
       const saved = await saveOnboardingState(formData);
       setSavedAt(saved.updatedAt);
       setStatus('saved');
-    } catch {
+    } catch (error) {
       setStatus('error');
-      setErrorMessage(copy.submitError);
+      setErrorMessage(error instanceof Error ? error.message : copy.submitError);
     }
   };
 

@@ -1,5 +1,3 @@
-import { pushPreferencesToJotform } from './shared.js';
-
 type JsonPayload = Record<string, unknown>;
 
 type TherapistInsurance = {
@@ -295,7 +293,6 @@ export default async function handler(request: any, response: any) {
     if (preferencesMatch && request.method === 'POST') {
       const body = await readJsonBody(request);
       const userId = decodeURIComponent(preferencesMatch[1]);
-      await pushPreferencesToJotform({ ...body, userId });
       sendJson(response, 200, {
         data: {
           ...body,

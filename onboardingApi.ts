@@ -72,48 +72,35 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
     updatedAt: new Date().toISOString(),
   };
 
-  try {
-    const userResponse = await fetch(apiPath('/users'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: userId, email: data.email, preferredLanguage: data.preferredLanguage, areaCode: data.areaCode }),
-    });
+  const answersResponse = await fetch(apiPath('/answers/save'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId,
+      email: data.email,
+      areaCode: data.areaCode,
+      preferredLanguage: data.preferredLanguage,
+      therapyFor: data.therapyFor,
+      carePreference: data.carePreference,
+      lifeAspectsByCategory,
+      lifeAspectNotesByCategory: data.lifeAspectNotesByCategory,
+      lifeAspectSkippedByCategory: data.lifeAspectSkippedByCategory,
+      lifeAspects,
+      therapyTypes: lifeAspects,
+      insuranceProvider: data.insuranceProvider,
+      insurancePlan: data.insurancePlan,
+      cnipConversationStyles: data.cnipConversationStyles,
+      cnipPreferenceProfile: data.cnipPreferenceProfile,
+      styleScenarioResponses: data.styleScenarioResponses,
+      userStyleVector: data.userStyleVector,
+      modalityPreferenceIds: data.modalityPreferenceIds,
+      logistics: data.logistics,
+    }),
+  });
 
-    if (!userResponse.ok) {
-      throw new Error('Failed to save user');
-    }
-
-    const preferencesResponse = await fetch(apiPath('/preferences-save'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        email: data.email,
-        areaCode: data.areaCode,
-        preferredLanguage: data.preferredLanguage,
-        therapyFor: data.therapyFor,
-        carePreference: data.carePreference,
-        lifeAspectsByCategory,
-        lifeAspectNotesByCategory: data.lifeAspectNotesByCategory,
-        lifeAspectSkippedByCategory: data.lifeAspectSkippedByCategory,
-        lifeAspects,
-        therapyTypes: lifeAspects,
-        insuranceProvider: data.insuranceProvider,
-        insurancePlan: data.insurancePlan,
-        cnipConversationStyles: data.cnipConversationStyles,
-        cnipPreferenceProfile: data.cnipPreferenceProfile,
-        styleScenarioResponses: data.styleScenarioResponses,
-        userStyleVector: data.userStyleVector,
-        modalityPreferenceIds: data.modalityPreferenceIds,
-        logistics: data.logistics,
-      }),
-    });
-
-    if (!preferencesResponse.ok) {
-      throw new Error('Failed to save preferences');
-    }
-  } catch {
-    // Keep local persistence so onboarding remains usable before backend is ready.
+  if (!answersResponse.ok) {
+    const detail = await answersResponse.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(detail?.error?.message ?? `Failed to save answers (HTTP ${answersResponse.status}).`);
   }
 
   writeSavedState(payload);

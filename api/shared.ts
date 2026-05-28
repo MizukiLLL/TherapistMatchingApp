@@ -60,83 +60,106 @@ export function normalize(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export async function pushPreferencesToJotform(record: Record<string, unknown>): Promise<void> {
-  const apiKey = process.env.JOTFORM_API_KEY;
-  const formId = process.env.JOTFORM_FORM_ID;
-  const fieldMapJson = process.env.JOTFORM_FIELD_MAP;
-  if (!apiKey || !formId || !fieldMapJson) return;
+export type SupabaseInsertResult = {
+  ok: boolean;
+  status: number;
+  message?: string;
+};
 
-  let fieldMap: Record<string, number | string>;
-  try {
-    fieldMap = JSON.parse(fieldMapJson);
-  } catch (error) {
-    console.warn('[jotform-mirror] JOTFORM_FIELD_MAP is not valid JSON; skipping push.', error);
-    return;
+function buildStyleFitSummary(record: Record<string, any>): string {
+  const styles = Array.isArray(record.cnipConversationStyles) ? record.cnipConversationStyles : [];
+  const vector = record.userStyleVector ?? null;
+  const picked = styles.length ? `Picked styles: ${styles.join(', ')}` : 'Picked styles: none';
+  const vectorLine = vector
+    ? `Vector — directive: ${vector.therapist_directive}, emotional: ${vector.emotionally_intensive}, past-focused: ${vector.past_focused}, support-focused: ${vector.support_focused}`
+    : 'Vector: not scored';
+  return `${picked} | ${vectorLine}`;
+}
+
+function combineConcerns(record: Record<string, any>): string[] {
+  const grouped = (record.lifeAspectsByCategory ?? {}) as Record<string, unknown>;
+  return [
+    ...((grouped.symptomsAndDiagnoses as unknown[]) ?? []),
+    ...((grouped.lifeStagesAndTransitions as unknown[]) ?? []),
+    ...((grouped.physicalHealthRelatedIssues as unknown[]) ?? []),
+    ...((grouped.selfIdentityAndSocialRelationships as unknown[]) ?? []),
+  ].map(String);
+}
+
+export function buildUserAnswersRow(record: Record<string, any>): Record<string, unknown> {
+  const logistics = (record.logistics ?? {}) as Record<string, unknown>;
+  const emailRaw = typeof record.email === 'string' ? record.email.trim() : '';
+  return {
+    user_id: record.userId ?? null,
+    email: emailRaw ? emailRaw : null,
+    zip_code: record.areaCode ?? null,
+    preferred_language: record.preferredLanguage ?? null,
+    therapy_for: record.therapyFor ?? null,
+    care_preference: record.carePreference ?? null,
+    payment_preference: logistics.paymentPreference ?? null,
+    availability: logistics.availability ?? null,
+    insurance_provider: record.insuranceProvider ?? null,
+    insurance_plan: record.insurancePlan ?? null,
+    budget_range: logistics.budgetRange ?? null,
+    language_priority: logistics.languagePriority ?? null,
+    required_languages: logistics.requiredLanguages ?? null,
+    preferred_languages: logistics.preferredLanguages ?? null,
+    cultural_context_needs: logistics.culturalContextNeeds ?? null,
+    culture_priority: logistics.culturePriority ?? null,
+    modality_preference_ids: record.modalityPreferenceIds ?? null,
+    concerns: combineConcerns(record),
+    life_aspects_by_category: record.lifeAspectsByCategory ?? null,
+    life_aspect_notes_by_category: record.lifeAspectNotesByCategory ?? null,
+    life_aspect_skipped_by_category: record.lifeAspectSkippedByCategory ?? null,
+    cnip_conversation_styles: record.cnipConversationStyles ?? null,
+    cnip_preference_profile: record.cnipPreferenceProfile ?? null,
+    style_scenario_responses: record.styleScenarioResponses ?? null,
+    user_style_vector: record.userStyleVector ?? null,
+    style_fit_summary: buildStyleFitSummary(record),
+    raw_payload: record,
+  };
+}
+
+export async function insertUserAnswers(record: Record<string, any>): Promise<SupabaseInsertResult> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    return {
+      ok: false,
+      status: 500,
+      message: 'Server is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.',
+    };
   }
 
-  const lifeAspects = (record.lifeAspectsByCategory ?? {}) as Record<string, unknown>;
-  const concernsSummary = [
-    ...((lifeAspects.symptomsAndDiagnoses as unknown[]) ?? []),
-    ...((lifeAspects.lifeStagesAndTransitions as unknown[]) ?? []),
-    ...((lifeAspects.physicalHealthRelatedIssues as unknown[]) ?? []),
-    ...((lifeAspects.selfIdentityAndSocialRelationships as unknown[]) ?? []),
-  ].map(String).join(', ');
-
-  const styles = Array.isArray(record.cnipConversationStyles) ? record.cnipConversationStyles.map(String) : [];
-  const vector = (record.userStyleVector ?? null) as null | {
-    therapist_directive: number;
-    emotionally_intensive: number;
-    past_focused: number;
-    support_focused: number;
-  };
-  const cnipStyleSummary = [
-    styles.length ? `Picked styles: ${styles.join(', ')}` : 'Picked styles: none',
-    vector
-      ? `Vector — directive: ${vector.therapist_directive}, emotional: ${vector.emotionally_intensive}, past-focused: ${vector.past_focused}, support-focused: ${vector.support_focused}`
-      : 'Vector: not scored',
-  ].join(' | ');
-
-  const logistics = (record.logistics ?? {}) as Record<string, unknown>;
-  const body = new URLSearchParams();
-  const set = (key: string, value: string) => {
-    const id = fieldMap[key];
-    if (id === undefined || id === null || id === '') return;
-    body.set(`submission[${id}]`, value);
-  };
-
-  set('email', normalize(record.email));
-  set('areaCode', normalize(record.areaCode));
-  set('preferredLanguage', normalize(record.preferredLanguage));
-  set('therapyFor', normalize(record.therapyFor));
-  set('carePreference', normalize(record.carePreference));
-  set('paymentPreference', normalize(logistics.paymentPreference));
-  set('availability', normalize(logistics.availability));
-  set('concernsSummary', concernsSummary);
-  set('cnipStyle', cnipStyleSummary);
-  set('submissionJson', JSON.stringify(record));
-
-  const mappedKeys = Array.from(body.keys()).map((key) => key.replace(/^submission\[/, '').replace(/\]$/, ''));
-  console.log(`[jotform-mirror] attempt form=${formId} fields=${mappedKeys.join(',')}`);
+  const row = buildUserAnswersRow(record);
 
   try {
-    const result = await fetch(
-      `https://api.jotform.com/form/${formId}/submissions?apiKey=${encodeURIComponent(apiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-      }
-    );
-    const responseText = await result.text().catch(() => '');
-    if (!result.ok) {
-      console.warn(`[jotform-mirror] HTTP ${result.status}: ${responseText}`);
-    } else {
-      console.log(`[jotform-mirror] success HTTP ${result.status}: ${responseText.slice(0, 200)}`);
+    const response = await fetch(`${url.replace(/\/$/, '')}/rest/v1/user_answers`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(row),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return { ok: false, status: response.status, message: text || `Supabase responded with ${response.status}.` };
     }
+
+    return { ok: true, status: response.status, message: undefined };
   } catch (error) {
-    console.warn('[jotform-mirror] request failed:', error);
+    return {
+      ok: false,
+      status: 500,
+      message: error instanceof Error ? error.message : 'Supabase request failed.',
+    };
   }
 }
+
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String).map((entry) => entry.trim()).filter(Boolean) : [];
