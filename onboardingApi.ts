@@ -83,10 +83,11 @@ export async function saveOnboardingState(data: OnboardingFormData): Promise<Sav
       throw new Error('Failed to save user');
     }
 
-    const preferencesResponse = await fetch(apiPath(`/users/${userId}/preferences`), {
+    const preferencesResponse = await fetch(apiPath('/preferences-save'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        userId,
         email: data.email,
         areaCode: data.areaCode,
         preferredLanguage: data.preferredLanguage,

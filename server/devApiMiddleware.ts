@@ -372,6 +372,61 @@ export function createDevApiMiddleware() {
     const userTmtiProfileMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/tmti-profile$/);
     const userTmtiResponsesMatch = routeMatch(requestUrl.pathname, /^\/users\/([^/]+)\/tmti-responses$/);
 
+    if (requestUrl.pathname === '/preferences-save') {
+      if (request.method !== 'POST') {
+        sendMethodNotAllowed(response, ['POST']);
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const userId = typeof body.userId === 'string' && body.userId.trim() ? body.userId.trim() : 'anonymous';
+        const errors = validatePreferencePayload(body);
+
+        if (errors.length > 0) {
+          sendJson(response, 400, {
+            error: {
+              code: 'INVALID_PREFERENCE_PAYLOAD',
+              message: 'POST /preferences-save received invalid fields.',
+              details: errors,
+            },
+          });
+          return;
+        }
+
+        const preferences = upsertUserPreferences(userId, {
+          email: typeof body.email === 'string' ? body.email : undefined,
+          areaCode: typeof body.areaCode === 'string' ? body.areaCode : undefined,
+          preferredLanguage: typeof body.preferredLanguage === 'string' ? body.preferredLanguage : undefined,
+          therapyFor: typeof body.therapyFor === 'string' ? body.therapyFor as any : undefined,
+          lifeAspectsByCategory: typeof body.lifeAspectsByCategory === 'object' && body.lifeAspectsByCategory !== null ? body.lifeAspectsByCategory as any : undefined,
+          lifeAspectNotesByCategory: typeof body.lifeAspectNotesByCategory === 'object' && body.lifeAspectNotesByCategory !== null ? body.lifeAspectNotesByCategory as any : undefined,
+          lifeAspectSkippedByCategory: typeof body.lifeAspectSkippedByCategory === 'object' && body.lifeAspectSkippedByCategory !== null ? body.lifeAspectSkippedByCategory as any : undefined,
+          therapyTypes: Array.isArray(body.therapyTypes) ? body.therapyTypes.map(String) : undefined,
+          lifeAspects: Array.isArray(body.lifeAspects) ? body.lifeAspects.map(String) : undefined,
+          insuranceProvider: typeof body.insuranceProvider === 'string' ? body.insuranceProvider : undefined,
+          insurancePlan: typeof body.insurancePlan === 'string' ? body.insurancePlan : undefined,
+          carePreference: typeof body.carePreference === 'string' ? body.carePreference : undefined,
+          cnipConversationStyles: Array.isArray(body.cnipConversationStyles) ? body.cnipConversationStyles.map(String) as any : undefined,
+          cnipPreferenceProfile: typeof body.cnipPreferenceProfile === 'object' && body.cnipPreferenceProfile !== null ? body.cnipPreferenceProfile as any : undefined,
+          styleScenarioResponses: Array.isArray(body.styleScenarioResponses) ? body.styleScenarioResponses as any : undefined,
+          userStyleVector: typeof body.userStyleVector === 'object' && body.userStyleVector !== null ? body.userStyleVector as any : undefined,
+        });
+
+        void pushToJotform(preferences);
+
+        sendJson(response, 200, { data: preferences });
+      } catch (error) {
+        sendJson(response, 400, {
+          error: {
+            code: 'INVALID_PREFERENCE_PAYLOAD',
+            message: error instanceof Error ? error.message : 'Could not parse preference payload.',
+          },
+        });
+      }
+      return;
+    }
+
     if (requestUrl.pathname === '/therapists/psychologytoday/fetch') {
       if (request.method !== 'POST') {
         sendMethodNotAllowed(response, ['POST']);
